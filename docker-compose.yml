@@ -1,0 +1,40 @@
+version: "3.9"
+
+services:
+  # ── Backend ────────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./valuai-backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    env_file:
+      - ./valuai-backend/.env
+    environment:
+      # Override DB to use Railway public URL from .env
+      APP_ENV: development
+      FRONTEND_URL: http://localhost:3000
+    volumes:
+      - ./valuai-backend:/app
+      - /app/__pycache__
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # ── Frontend ───────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./valuai-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./valuai-frontend/.env.local
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+# Note: No local Postgres needed — using Railway PostgreSQL directly.
+# Run migrations with:
+#   psql $DATABASE_PUBLIC_URL -f valuai-backend/migrations/001_init.sql

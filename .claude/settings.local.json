@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/Admin/**)",
+      "Bash(npm run *)",
+      "Bash(echo \"pid=$!\")",
+      "Bash(curl -s http://localhost:3001)",
+      "Bash(kill 2505)",
+      "Bash(git --version)"
+    ]
+  }
+}
