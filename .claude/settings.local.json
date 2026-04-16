@@ -6,7 +6,8 @@
       "Bash(echo \"pid=$!\")",
       "Bash(curl -s http://localhost:3001)",
       "Bash(kill 2505)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(export RAILWAY_TOKEN=\"61950f47-9c33-4a96-bb06-12d0b6bb4129\")"
     ]
   }
 }
