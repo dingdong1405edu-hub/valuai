@@ -230,12 +230,13 @@ async def gemini_text(prompt: str) -> tuple[str, int]:
     reraise=True,
 )
 async def embed_text(text: str, task_type: str = "retrieval_document") -> list[float]:
-    """Embed a single text using Google text-embedding-004 (768 dims)."""
+    """Embed a single text using gemini-embedding-001 (768 dims via output_dimensionality)."""
     result = await asyncio.to_thread(
         genai.embed_content,
         model=settings.EMBEDDING_MODEL,
         content=text,
         task_type=task_type,
+        output_dimensionality=768,
     )
     return result["embedding"]
 
@@ -253,5 +254,6 @@ async def embed_texts(texts: list[str]) -> list[list[float]]:
         model=settings.EMBEDDING_MODEL,
         content=texts,
         task_type="retrieval_document",
+        output_dimensionality=768,
     )
     return result["embedding"]
