@@ -1,21 +1,24 @@
 """
-AI client layer — Groq (fast) + Gemini (deep).
+AI client layer — Groq (fast extraction) + Gemini (parsing + reasoning).
 
-Routing:
-  extract_fast      → Groq  llama-3.3-70b-versatile
-  scorecard         → Groq
-  read_pdf          → Gemini 2.0 Flash (multimodal)
-  analyze_deep      → Gemini 2.0 Flash (long context)
-  synthesize_report → Gemini 2.0 Flash
-  embed             → Google text-embedding-004
+Groq:
+  groq_json  → llama-3.3-70b-versatile  (JSON extraction, scorecard)
+  groq_text  → deepseek-r1-distill-llama-70b (reasoning, text tasks)
+
+Gemini:
+  gemini_parse_pdf   → 2.0-flash (inline bytes — no Files API to avoid processing delay)
+  gemini_parse_image → 2.0-flash (inline bytes)
+  gemini_json        → 2.0-flash (structured JSON output)
+  gemini_text        → 2.0-flash (free-form text)
+
+Embeddings:
+  embed_text / embed_texts → gemini-embedding-001 (768-dim)
 """
 
 import asyncio
+import base64
 import json
 import logging
-import os
-import tempfile
-from enum import Enum
 from typing import Any
 
 import google.generativeai as genai
@@ -31,7 +34,7 @@ from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-# ─── Initialize clients ──────────────────────────────────────────────────────
+# ─── Initialize clients ───────────────────────────────────────────────────────
 
 genai.configure(api_key=settings.GOOGLE_API_KEY)
 
@@ -39,36 +42,19 @@ _groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 _gemini_text = genai.GenerativeModel(
     settings.GEMINI_MODEL,
-    generation_config={"temperature": 0.3, "max_output_tokens": 16384},
+    generation_config={"temperature": 0.2, "max_output_tokens": 8192},
 )
-_gemini_json = genai.GenerativeModel(
+_gemini_json_model = genai.GenerativeModel(
     settings.GEMINI_MODEL,
     generation_config={
         "temperature": 0.0,
-        "max_output_tokens": 16384,
+        "max_output_tokens": 8192,
         "response_mime_type": "application/json",
     },
 )
 
 
-class TaskType(str, Enum):
-    EXTRACT_FAST = "extract_fast"
-    READ_PDF = "read_pdf"
-    ANALYZE_DEEP = "analyze_deep"
-    SCORECARD = "scorecard"
-    SYNTHESIZE_REPORT = "synthesize_report"
-    EMBED = "embed"
-
-
-def route_ai(task_type: TaskType) -> str:
-    """Return 'groq' or 'gemini' for the given task type."""
-    groq_tasks = {TaskType.EXTRACT_FAST, TaskType.SCORECARD}
-    if task_type in groq_tasks:
-        return "groq"
-    return "gemini"
-
-
-# ─── Groq helpers ────────────────────────────────────────────────────────────
+# ─── Groq helpers ─────────────────────────────────────────────────────────────
 
 @retry(
     stop=stop_after_attempt(3),
@@ -77,12 +63,9 @@ def route_ai(task_type: TaskType) -> str:
     reraise=True,
 )
 async def groq_json(system: str, user: str, max_tokens: int = 4096) -> tuple[dict[str, Any], int]:
-    """
-    Structured JSON extraction via Groq.
-    Uses GROQ_EXTRACTION_MODEL (llama-3.3-70b) — most reliable for JSON output.
-    """
+    """Structured JSON extraction via Groq llama-3.3-70b-versatile."""
     model = settings.GROQ_EXTRACTION_MODEL
-    logger.info(f"[GROQ] json call — model={model}")
+    logger.info(f"[GROQ] json — model={model}, user_len={len(user)}")
     response = await _groq.chat.completions.create(
         model=model,
         messages=[
@@ -94,8 +77,9 @@ async def groq_json(system: str, user: str, max_tokens: int = 4096) -> tuple[dic
         max_tokens=max_tokens,
     )
     tokens = response.usage.total_tokens if response.usage else 0
-    logger.info(f"[GROQ] tokens_used={tokens}")
-    return json.loads(response.choices[0].message.content), tokens
+    content = response.choices[0].message.content
+    logger.info(f"[GROQ] json done — tokens={tokens}, response_len={len(content)}")
+    return json.loads(content), tokens
 
 
 @retry(
@@ -105,10 +89,11 @@ async def groq_json(system: str, user: str, max_tokens: int = 4096) -> tuple[dic
     reraise=True,
 )
 async def groq_text(system: str, user: str, max_tokens: int = 2048) -> tuple[str, int]:
-    """Call Groq and return plain text. Uses GROQ_MODEL (deepseek-r1) for richer reasoning."""
-    logger.info(f"[GROQ] text call — model={settings.GROQ_MODEL}")
+    """Plain text via Groq deepseek-r1 (better reasoning)."""
+    model = settings.GROQ_MODEL
+    logger.info(f"[GROQ] text — model={model}")
     response = await _groq.chat.completions.create(
-        model=settings.GROQ_MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -117,7 +102,7 @@ async def groq_text(system: str, user: str, max_tokens: int = 2048) -> tuple[str
         max_tokens=max_tokens,
     )
     tokens = response.usage.total_tokens if response.usage else 0
-    logger.info(f"[GROQ] tokens_used={tokens}")
+    logger.info(f"[GROQ] text done — tokens={tokens}")
     return response.choices[0].message.content, tokens
 
 
@@ -131,34 +116,39 @@ async def groq_text(system: str, user: str, max_tokens: int = 2048) -> tuple[str
 )
 async def gemini_parse_pdf(file_bytes: bytes, prompt: str) -> tuple[str, int]:
     """
-    Upload PDF bytes to Gemini Files API and extract content.
-    Gemini 2.0 Flash can read up to 20 MB PDFs directly.
+    Parse a PDF using Gemini Vision — inline base64 (no Files API).
+    Avoids the Files API 'PROCESSING' delay that causes intermittent failures.
+    Supports up to ~20 MB PDFs.
     """
-    logger.info(f"[GEMINI] parse_pdf — {len(file_bytes)//1024} KB")
+    size_kb = len(file_bytes) // 1024
+    logger.info(f"[GEMINI] parse_pdf — {size_kb} KB (inline base64)")
 
-    # Write to temp file, upload, then clean up
-    suffix = ".pdf"
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
+    pdf_b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
 
-    try:
-        uploaded = await asyncio.to_thread(
-            genai.upload_file, tmp_path, mime_type="application/pdf"
-        )
-        response = await asyncio.to_thread(
-            _gemini_text.generate_content, [uploaded, prompt]
-        )
-        # Clean up uploaded file from Gemini Files API
-        try:
-            await asyncio.to_thread(uploaded.delete)
-        except Exception:
-            pass
-        tokens = response.usage_metadata.total_token_count if hasattr(response, "usage_metadata") else 0
-        logger.info(f"[GEMINI] parse_pdf tokens={tokens}")
-        return response.text, tokens
-    finally:
-        os.unlink(tmp_path)
+    # Pass inline_data dict — SDK converts this to a Part automatically
+    content_parts = [
+        {
+            "inline_data": {
+                "mime_type": "application/pdf",
+                "data": pdf_b64,
+            }
+        },
+        prompt,
+    ]
+
+    response = await asyncio.to_thread(
+        _gemini_text.generate_content,
+        content_parts,
+    )
+
+    text_out = response.text or ""
+    tokens = (
+        response.usage_metadata.total_token_count
+        if hasattr(response, "usage_metadata") and response.usage_metadata
+        else 0
+    )
+    logger.info(f"[GEMINI] parse_pdf done — tokens={tokens}, output_len={len(text_out)}")
+    return text_out, tokens
 
 
 @retry(
@@ -168,31 +158,35 @@ async def gemini_parse_pdf(file_bytes: bytes, prompt: str) -> tuple[str, int]:
     reraise=True,
 )
 async def gemini_parse_image(file_bytes: bytes, mime_type: str, prompt: str) -> tuple[str, int]:
-    """Extract content from an image (PNG/JPG/WEBP) via Gemini Vision."""
-    logger.info(f"[GEMINI] parse_image — mime={mime_type}, {len(file_bytes)//1024} KB")
+    """Extract text/data from an image (PNG/JPG/WEBP) using Gemini Vision — inline bytes."""
+    size_kb = len(file_bytes) // 1024
+    logger.info(f"[GEMINI] parse_image — mime={mime_type}, {size_kb} KB")
 
-    ext_map = {"image/png": ".png", "image/jpeg": ".jpg", "image/webp": ".webp"}
-    suffix = ext_map.get(mime_type, ".jpg")
+    img_b64 = base64.standard_b64encode(file_bytes).decode("utf-8")
 
-    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
-        tmp.write(file_bytes)
-        tmp_path = tmp.name
+    content_parts = [
+        {
+            "inline_data": {
+                "mime_type": mime_type,
+                "data": img_b64,
+            }
+        },
+        prompt,
+    ]
 
-    try:
-        uploaded = await asyncio.to_thread(
-            genai.upload_file, tmp_path, mime_type=mime_type
-        )
-        response = await asyncio.to_thread(
-            _gemini_text.generate_content, [uploaded, prompt]
-        )
-        try:
-            await asyncio.to_thread(uploaded.delete)
-        except Exception:
-            pass
-        tokens = response.usage_metadata.total_token_count if hasattr(response, "usage_metadata") else 0
-        return response.text, tokens
-    finally:
-        os.unlink(tmp_path)
+    response = await asyncio.to_thread(
+        _gemini_text.generate_content,
+        content_parts,
+    )
+
+    text_out = response.text or ""
+    tokens = (
+        response.usage_metadata.total_token_count
+        if hasattr(response, "usage_metadata") and response.usage_metadata
+        else 0
+    )
+    logger.info(f"[GEMINI] parse_image done — tokens={tokens}, output_len={len(text_out)}")
+    return text_out, tokens
 
 
 @retry(
@@ -202,12 +196,21 @@ async def gemini_parse_image(file_bytes: bytes, mime_type: str, prompt: str) -> 
     reraise=True,
 )
 async def gemini_json(prompt: str) -> tuple[dict[str, Any], int]:
-    """Call Gemini and return parsed JSON. Retries up to 3×."""
-    logger.info("[GEMINI] json call")
-    response = await asyncio.to_thread(_gemini_json.generate_content, prompt)
-    tokens = response.usage_metadata.total_token_count if hasattr(response, "usage_metadata") else 0
-    logger.info(f"[GEMINI] json tokens={tokens}")
-    return json.loads(response.text), tokens
+    """Call Gemini and return parsed JSON. Uses response_mime_type=application/json."""
+    logger.info(f"[GEMINI] json — prompt_len={len(prompt)}")
+    response = await asyncio.to_thread(_gemini_json_model.generate_content, prompt)
+    text_out = response.text or "{}"
+    tokens = (
+        response.usage_metadata.total_token_count
+        if hasattr(response, "usage_metadata") and response.usage_metadata
+        else 0
+    )
+    logger.info(f"[GEMINI] json done — tokens={tokens}")
+    try:
+        return json.loads(text_out), tokens
+    except json.JSONDecodeError as e:
+        logger.error(f"[GEMINI] json parse failed: {e} — raw: {text_out[:200]}")
+        raise
 
 
 @retry(
@@ -217,15 +220,35 @@ async def gemini_json(prompt: str) -> tuple[dict[str, Any], int]:
     reraise=True,
 )
 async def gemini_text(prompt: str) -> tuple[str, int]:
-    """Call Gemini and return plain text. Retries up to 3×."""
-    logger.info("[GEMINI] text call")
+    """Call Gemini and return plain text."""
+    logger.info(f"[GEMINI] text — prompt_len={len(prompt)}")
     response = await asyncio.to_thread(_gemini_text.generate_content, prompt)
-    tokens = response.usage_metadata.total_token_count if hasattr(response, "usage_metadata") else 0
-    logger.info(f"[GEMINI] text tokens={tokens}")
-    return response.text, tokens
+    text_out = response.text or ""
+    tokens = (
+        response.usage_metadata.total_token_count
+        if hasattr(response, "usage_metadata") and response.usage_metadata
+        else 0
+    )
+    logger.info(f"[GEMINI] text done — tokens={tokens}")
+    return text_out, tokens
 
 
-# ─── Embedding helper ─────────────────────────────────────────────────────────
+# ─── Embedding helpers ────────────────────────────────────────────────────────
+
+def _embed_kwargs() -> dict:
+    """
+    Build kwargs for genai.embed_content.
+    output_dimensionality=768 is only passed for models that support it
+    (gemini-embedding-001 etc). text-embedding-004 natively returns 768 dims
+    and does NOT accept this param — passing it raises a 400 error.
+    """
+    model = settings.EMBEDDING_MODEL
+    kwargs: dict[str, Any] = {"model": model}
+    # Only newer embedding models support output_dimensionality
+    if "gemini-embedding" in model or "embedding-exp" in model:
+        kwargs["output_dimensionality"] = 768
+    return kwargs
+
 
 @retry(
     stop=stop_after_attempt(3),
@@ -234,13 +257,13 @@ async def gemini_text(prompt: str) -> tuple[str, int]:
     reraise=True,
 )
 async def embed_text(text: str, task_type: str = "retrieval_document") -> list[float]:
-    """Embed a single text using gemini-embedding-001 (768 dims via output_dimensionality)."""
+    """Embed a single text. Returns a 768-dim float vector."""
+    kwargs = _embed_kwargs()
     result = await asyncio.to_thread(
         genai.embed_content,
-        model=settings.EMBEDDING_MODEL,
         content=text,
         task_type=task_type,
-        output_dimensionality=768,
+        **kwargs,
     )
     return result["embedding"]
 
@@ -253,11 +276,15 @@ async def embed_text(text: str, task_type: str = "retrieval_document") -> list[f
 )
 async def embed_texts(texts: list[str]) -> list[list[float]]:
     """Embed multiple texts. Returns list of 768-dim vectors."""
+    kwargs = _embed_kwargs()
     result = await asyncio.to_thread(
         genai.embed_content,
-        model=settings.EMBEDDING_MODEL,
         content=texts,
         task_type="retrieval_document",
-        output_dimensionality=768,
+        **kwargs,
     )
-    return result["embedding"]
+    emb = result["embedding"]
+    # Normalize: single-text result may return a flat list
+    if texts and isinstance(emb[0], (int, float)):
+        return [emb]
+    return emb
