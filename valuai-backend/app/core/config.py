@@ -21,12 +21,13 @@ class Settings(BaseSettings):
 
     # Groq
     GROQ_API_KEY: str
-    GROQ_MODEL: str = "llama-3.3-70b-versatile"
+    GROQ_MODEL: str = "deepseek-r1-distill-llama-70b"        # upgraded: better reasoning
+    GROQ_EXTRACTION_MODEL: str = "llama-3.3-70b-versatile"   # reliable JSON extraction
 
     # Google AI
     GOOGLE_API_KEY: str
-    GEMINI_MODEL: str = "gemini-2.0-flash"
-    EMBEDDING_MODEL: str = "models/text-embedding-004"
+    GEMINI_MODEL: str = "gemini-2.5-flash"                   # upgraded from 2.0
+    EMBEDDING_MODEL: str = "models/gemini-embedding-001"
 
     # Optional external APIs
     FIRECRAWL_API_KEY: Optional[str] = None

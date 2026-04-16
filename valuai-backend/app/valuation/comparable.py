@@ -140,6 +140,20 @@ async def run_comparable(
     profit = fin.get("profit") or 0
     industry = fin.get("industry", "")
 
+    # If revenue is 0/null, estimate from employees (same logic as scorecard)
+    if not revenue or revenue <= 0:
+        employees = fin.get("employees") or 10
+        ind_lower = industry.lower()
+        rev_per_emp = 2.0
+        if any(k in ind_lower for k in ("tech", "software", "it")):
+            rev_per_emp = 3.0
+        elif any(k in ind_lower for k in ("retail", "bán lẻ", "trade")):
+            rev_per_emp = 4.0
+        elif any(k in ind_lower for k in ("manufacturing", "sản xuất")):
+            rev_per_emp = 1.5
+        revenue = max(float(employees) * rev_per_emp, 5.0)
+        logger.warning(f"[COMPARABLE] revenue=0 — estimated {revenue:.1f} tỷ from employees")
+
     # Try Fireant first (only if token configured)
     peers = []
     if settings.FIREANT_TOKEN:

@@ -11,7 +11,6 @@ Vietnamese SME defaults:
 """
 
 import logging
-import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -35,28 +34,39 @@ class DCFResult:
     tokens_used: int
 
 
-DCF_SCENARIO_PROMPT = """You are a financial analyst building a DCF model for a Vietnamese SME.
+DCF_SCENARIO_PROMPT = """You are a senior M&A analyst building a DCF model for a Vietnamese SME.
 
-Company financial data:
+⚠️ ALL monetary values below are in VND BILLIONS (tỷ đồng).
+
+Company financial snapshot:
 {financial_summary}
 
-Your task: Generate THREE cash flow projection scenarios (conservative, base, optimistic) for 5 years.
+Vietnamese SME benchmarks by industry:
+- Technology/Software: growth 20-40%/yr, EBITDA margin 20-40%, capex 2-5%
+- Retail/Trading: growth 8-20%/yr, EBITDA margin 5-12%, capex 2-6%
+- Manufacturing: growth 5-15%/yr, EBITDA margin 8-15%, capex 8-15%
+- F&B/Restaurant: growth 10-25%/yr, EBITDA margin 10-20%, capex 5-10%
+- Education/Edtech: growth 15-35%/yr, EBITDA margin 15-30%, capex 3-8%
+- Healthcare: growth 12-25%/yr, EBITDA margin 12-25%, capex 5-12%
+- Logistics: growth 8-18%/yr, EBITDA margin 5-10%, capex 8-15%
+- General services: growth 8-18%/yr, EBITDA margin 10-20%, capex 3-7%
 
+Task: Generate 3 DCF scenarios (conservative/base/optimistic) for 5 years.
 Rules:
-- Use Vietnamese market context: high-growth sectors 15-30%, stable 5-15%, declining 0-5%
-- EBITDA margins: manufacturing 8-15%, services 15-25%, tech 20-40%
-- Base case should reflect current trajectory
-- Conservative = base × 0.7 growth rate
-- Optimistic = base × 1.4 growth rate
+- If revenue data exists, base case reflects current trajectory
+- If revenue is unknown, ESTIMATE based on employee count and industry (Vietnamese SME avg ~1-3 tỷ/employee/year for services)
+- Conservative = base growth × 0.65, compressed margins
+- Optimistic = base growth × 1.5, improving margins (EBITDA max 50%)
+- WACC for Vietnamese private SME: 14-20% (higher risk = higher WACC)
 
-Return ONLY this JSON:
+Return ONLY valid JSON (no markdown):
 {{
-  "base_revenue": <current annual revenue in VND billions>,
+  "base_revenue_billions": <current revenue in VND billions — estimate if unknown, never 0>,
   "scenarios": {{
     "conservative": {{
-      "growth_rates": [<yr1>, <yr2>, <yr3>, <yr4>, <yr5>],
-      "ebitda_margin": <decimal>,
-      "capex_ratio": <capex as % of revenue decimal>
+      "growth_rates": [<yr1_decimal>, <yr2_decimal>, <yr3_decimal>, <yr4_decimal>, <yr5_decimal>],
+      "ebitda_margin": <decimal 0.0-0.5>,
+      "capex_ratio": <decimal 0.0-0.2>
     }},
     "base": {{
       "growth_rates": [<yr1>, <yr2>, <yr3>, <yr4>, <yr5>],
@@ -69,8 +79,10 @@ Return ONLY this JSON:
       "capex_ratio": <decimal>
     }}
   }},
-  "confidence": <0.0-1.0 based on data quality>,
-  "data_quality": <"high"|"medium"|"low">
+  "wacc_recommendation": <recommended WACC decimal, e.g. 0.16 for 16%>,
+  "confidence": <0.0-1.0>,
+  "data_quality": <"high"|"medium"|"low">,
+  "revenue_estimated": <true if revenue was estimated, false if from document>
 }}"""
 
 
@@ -140,63 +152,75 @@ Employees: {fin.get('employees', 'Unknown')}
 """
 
     tokens_used = 0
-    confidence = 0.4  # default: low confidence
+    confidence = 0.3
 
     try:
         prompt = DCF_SCENARIO_PROMPT.format(financial_summary=summary)
         scenarios_data, tokens_used = await gemini_json(prompt)
 
-        base_revenue = scenarios_data.get("base_revenue") or max(revenue, 1)
-        scenarios = scenarios_data.get("scenarios", {})
-        confidence = float(scenarios_data.get("confidence", 0.4))
+        # Use Gemini's estimated base revenue if extraction produced nothing
+        base_revenue = (
+            scenarios_data.get("base_revenue_billions")
+            or scenarios_data.get("base_revenue")  # backward compat
+            or (revenue if revenue and revenue > 0 else None)
+        )
+        if not base_revenue or base_revenue <= 0:
+            # Last resort: rough estimate from employees
+            employees = fin.get("employees") or 10
+            base_revenue = max(employees * 1.5, 5.0)  # ~1.5 tỷ/employee, min 5 tỷ
+            logger.warning(f"[DCF] revenue unknown — using employee-based estimate: {base_revenue:.1f} tỷ")
 
-        # Adjust confidence based on data quality
+        scenarios = scenarios_data.get("scenarios", {})
+        confidence = float(scenarios_data.get("confidence", 0.35))
+        wacc_rec = scenarios_data.get("wacc_recommendation")
+        if wacc_rec and 0.08 <= wacc_rec <= 0.35:
+            wacc = wacc_rec  # use Gemini's WACC recommendation
+
         dq = scenarios_data.get("data_quality", "low")
         if dq == "high":
-            confidence = min(confidence + 0.2, 1.0)
+            confidence = min(confidence + 0.15, 0.95)
         elif dq == "low":
-            confidence = max(confidence - 0.2, 0.1)
+            confidence = max(confidence - 0.15, 0.15)
+        if scenarios_data.get("revenue_estimated"):
+            confidence = max(confidence - 0.10, 0.15)
 
         results: dict[str, float] = {}
         for scenario_name, params in scenarios.items():
-            growth_rates = params.get("growth_rates", [growth_rate] * 5)
-            ebitda_margin = params.get("ebitda_margin", 0.10)
+            growth_rates = params.get("growth_rates", [growth_rate or 0.10] * 5)
+            ebitda_margin = params.get("ebitda_margin", 0.12)
             capex_ratio = params.get("capex_ratio", 0.05)
 
             fcfs = _project_fcf(base_revenue, growth_rates, ebitda_margin, capex_ratio)
             pv_fcfs = _discount_cash_flows(fcfs, wacc)
             tv = _terminal_value(fcfs[-1], wacc)
-            enterprise_value = pv_fcfs + tv
-            results[scenario_name] = enterprise_value
+            results[scenario_name] = pv_fcfs + tv
 
         value_low = results.get("conservative", 0)
         value_mid = results.get("base", 0)
         value_high = results.get("optimistic", 0)
 
-        # Sanity check: if mid is 0 fall back to revenue multiple
-        if value_mid == 0 and revenue > 0:
-            value_mid = revenue * 2
-            value_low = value_mid * 0.7
-            value_high = value_mid * 1.5
-            confidence = 0.2
+        if value_mid <= 0:
+            value_mid = base_revenue * 3.0
+            value_low = value_mid * 0.65
+            value_high = value_mid * 1.6
+            confidence = max(confidence - 0.10, 0.15)
 
         assumptions = {
             "wacc": wacc,
             "terminal_growth": TERMINAL_GROWTH,
-            "base_revenue": base_revenue,
+            "base_revenue_billions": base_revenue,
             "scenarios": scenarios,
             "data_quality": dq,
         }
 
     except Exception as exc:
-        logger.error(f"[DCF] Gemini scenario generation failed: {exc}")
-        # Fallback: simple revenue multiple if AI call fails
-        base_rev = max(revenue, 1)
-        value_mid = base_rev * 2.5
-        value_low = value_mid * 0.6
-        value_high = value_mid * 1.6
+        logger.error(f"[DCF] Gemini scenario generation failed: {exc}", exc_info=True)
+        base_rev = revenue if revenue and revenue > 0 else 10.0  # 10 tỷ minimum estimate
+        value_mid = base_rev * 3.0
+        value_low = value_mid * 0.60
+        value_high = value_mid * 1.70
         confidence = 0.15
-        assumptions = {"wacc": wacc, "fallback": True, "error": str(exc)[:200]}
+        assumptions = {"wacc": wacc, "fallback": True, "base_revenue_billions": base_rev, "error": str(exc)[:200]}
 
     logger.info(f"[DCF] result — low={value_low:,.0f}, mid={value_mid:,.0f}, high={value_high:,.0f}, conf={confidence:.2f}")
 

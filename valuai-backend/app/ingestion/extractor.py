@@ -6,7 +6,6 @@ Two extraction types:
   2. Qualitative data → QualitativeData schema
 """
 
-import json
 import logging
 from typing import Any
 
@@ -20,49 +19,77 @@ logger = logging.getLogger(__name__)
 FINANCIAL_SYSTEM_PROMPT = """You are a senior financial analyst specializing in Vietnamese SME valuation.
 Extract structured financial data from the provided document text.
 
-Return ONLY valid JSON matching this exact schema (use null for missing fields):
-{
-  "revenue": <number in VND or original currency>,
-  "profit": <net profit number>,
-  "ebitda": <EBITDA number>,
-  "total_assets": <total assets number>,
-  "debt": <total debt/liabilities number>,
-  "employees": <employee count integer>,
-  "founding_year": <year integer>,
-  "industry": <industry name string>,
-  "products": ["list", "of", "main", "products/services"],
-  "markets": ["list", "of", "target", "markets"],
-  "growth_rate": <annual revenue growth rate as decimal e.g. 0.15 for 15%>,
-  "currency": <"VND" or "USD" etc>,
-  "fiscal_year": <year of the financial data>
-}
+⚠️ CRITICAL UNIT RULE — ALL monetary values MUST be returned in VND BILLIONS (tỷ đồng):
+  • Document says "45 tỷ đồng"              → return 45
+  • Document says "45,000 triệu đồng"       → return 45     (45,000 ÷ 1,000)
+  • Document says "45,200,000,000 VND"      → return 45.2   (÷ 1,000,000,000)
+  • Document says "500,000,000 đồng"        → return 0.5    (÷ 1,000,000,000)
+  • Document says "2,000,000 USD"           → return 50     (× 25,000 VND then ÷ 10^9)
+  • Revenue/profit NOT found in document    → return null (NEVER invent numbers)
 
-Rules:
-- All monetary values should be in the same unit as the source document
-- If revenue is in billions VND (tỷ đồng), return the value in billions
-- Use null for any field not found in the document
-- Do not invent data — only extract what is explicitly stated"""
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "revenue": <VND billions float or null>,
+  "profit": <net profit VND billions or null>,
+  "ebitda": <EBITDA VND billions or null>,
+  "total_assets": <VND billions or null>,
+  "debt": <total debt VND billions or null>,
+  "employees": <integer count or null>,
+  "founding_year": <4-digit year or null>,
+  "industry": <industry name in English e.g. "technology", "retail", "manufacturing">,
+  "products": ["up to 5 main products or services"],
+  "markets": ["up to 5 target markets or customer segments"],
+  "growth_rate": <annual revenue growth as decimal e.g. 0.15 for 15%, or null>,
+  "currency": "VND",
+  "fiscal_year": <4-digit year the financial data covers, e.g. 2023>
+}"""
 
 QUALITATIVE_SYSTEM_PROMPT = """You are a business analyst specializing in Vietnamese SME assessment.
 Extract qualitative business information from the provided document text.
 
-Return ONLY valid JSON matching this exact schema (use null for missing fields):
-{
-  "team_strength": <description of management team quality and experience>,
-  "product_uniqueness": <what makes the product/service unique or differentiated>,
-  "market_size": <description of target market size and opportunity>,
-  "competitive_moat": <description of competitive advantages and barriers>,
-  "customer_traction": <evidence of customer adoption, revenue, retention>,
-  "legal_status": <company registration, licenses, compliance status>,
-  "key_risks": ["list", "of", "identified", "business", "risks"],
-  "strategic_plans": ["list", "of", "stated", "growth", "plans"]
-}
+Important: This may be a Vietnamese-language document. Extract content accurately regardless of language.
 
-Rules:
-- Extract only explicitly stated information
-- Use null for fields with no relevant content
-- Keep descriptions concise (1-3 sentences each)
-- Lists should have 2-5 items maximum"""
+Return ONLY valid JSON (no markdown, no explanation):
+{
+  "team_strength": "<describe management team quality, experience, backgrounds — null if not mentioned>",
+  "product_uniqueness": "<what differentiates products/services from competition — null if not mentioned>",
+  "market_size": "<size and growth potential of target market — null if not mentioned>",
+  "competitive_moat": "<competitive advantages, barriers to entry, patents — null if not mentioned>",
+  "customer_traction": "<customer count, retention rates, key clients, revenue proof — null if not mentioned>",
+  "legal_status": "<company registration type, licenses, certificates, compliance — null if not mentioned>",
+  "key_risks": ["list 2-5 business risks explicitly mentioned, or empty array"],
+  "strategic_plans": ["list 2-5 growth plans or expansion goals explicitly mentioned, or empty array"]
+}"""
+
+
+# ─── Unit normalization ───────────────────────────────────────────────────────
+
+_MONEY_FIELDS = ("revenue", "profit", "ebitda", "total_assets", "debt")
+
+def _normalize_to_vnd_billions(data: dict[str, Any]) -> dict[str, Any]:
+    """
+    Safety net: if the AI returned raw VND integers instead of billions,
+    divide by 1e9.  Also converts USD amounts at ~25,000 VND/USD.
+    Threshold: any monetary value >= 1_000_000_000 is treated as raw VND.
+    """
+    currency = data.get("currency", "VND")
+    for field in _MONEY_FIELDS:
+        val = data.get(field)
+        if val is None:
+            continue
+        try:
+            val = float(val)
+        except (TypeError, ValueError):
+            data[field] = None
+            continue
+        if currency == "USD":
+            val = val * 25_000 / 1_000_000_000  # USD → VND billions
+            data["currency"] = "VND"
+        elif val >= 1_000_000_000:
+            # Treat as raw VND → convert to billions
+            val = val / 1_000_000_000
+        data[field] = round(val, 3) if val else val
+    return data
 
 
 # ─── Extraction functions ─────────────────────────────────────────────────────
@@ -86,13 +113,17 @@ Extract all financial data from this document. Return JSON only."""
 
     try:
         data, tokens = await groq_json(FINANCIAL_SYSTEM_PROMPT, user_msg)
-        logger.info(f"[EXTRACTOR] financial OK — tokens={tokens}")
-        # Validate with Pydantic
+        data = _normalize_to_vnd_billions(data)
         validated = FinancialData(**data)
-        return validated.model_dump(), tokens
+        result = validated.model_dump()
+        logger.info(
+            f"[EXTRACTOR] financial OK — tokens={tokens}, "
+            f"revenue={result.get('revenue')}, profit={result.get('profit')}, "
+            f"fiscal_year={result.get('fiscal_year')}"
+        )
+        return result, tokens
     except Exception as exc:
-        logger.error(f"[EXTRACTOR] financial extraction failed: {exc}")
-        # Return empty structure on failure
+        logger.error(f"[EXTRACTOR] financial extraction failed: {exc}", exc_info=True)
         return FinancialData().model_dump(), 0
 
 

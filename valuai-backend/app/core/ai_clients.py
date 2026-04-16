@@ -39,13 +39,13 @@ _groq = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
 _gemini_text = genai.GenerativeModel(
     settings.GEMINI_MODEL,
-    generation_config={"temperature": 0.3, "max_output_tokens": 8192},
+    generation_config={"temperature": 0.3, "max_output_tokens": 16384},
 )
 _gemini_json = genai.GenerativeModel(
     settings.GEMINI_MODEL,
     generation_config={
         "temperature": 0.0,
-        "max_output_tokens": 8192,
+        "max_output_tokens": 16384,
         "response_mime_type": "application/json",
     },
 )
@@ -76,11 +76,15 @@ def route_ai(task_type: TaskType) -> str:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-async def groq_json(system: str, user: str, max_tokens: int = 4096) -> dict[str, Any]:
-    """Call Groq and return parsed JSON dict. Retries up to 3×."""
-    logger.info(f"[GROQ] json call — model={settings.GROQ_MODEL}")
+async def groq_json(system: str, user: str, max_tokens: int = 4096) -> tuple[dict[str, Any], int]:
+    """
+    Structured JSON extraction via Groq.
+    Uses GROQ_EXTRACTION_MODEL (llama-3.3-70b) — most reliable for JSON output.
+    """
+    model = settings.GROQ_EXTRACTION_MODEL
+    logger.info(f"[GROQ] json call — model={model}")
     response = await _groq.chat.completions.create(
-        model=settings.GROQ_MODEL,
+        model=model,
         messages=[
             {"role": "system", "content": system},
             {"role": "user", "content": user},
@@ -101,7 +105,7 @@ async def groq_json(system: str, user: str, max_tokens: int = 4096) -> dict[str,
     reraise=True,
 )
 async def groq_text(system: str, user: str, max_tokens: int = 2048) -> tuple[str, int]:
-    """Call Groq and return plain text. Retries up to 3×."""
+    """Call Groq and return plain text. Uses GROQ_MODEL (deepseek-r1) for richer reasoning."""
     logger.info(f"[GROQ] text call — model={settings.GROQ_MODEL}")
     response = await _groq.chat.completions.create(
         model=settings.GROQ_MODEL,

@@ -22,7 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.ai_clients import gemini_json
-from app.db.models import Extraction, Valuation, Company
+from app.db.models import Extraction, Valuation
 from app.ingestion.embedder import semantic_search
 from app.valuation.dcf import run_dcf, DEFAULT_WACC
 from app.valuation.comparable import run_comparable
@@ -280,7 +280,7 @@ async def run_full_valuation(
         valuation.threats            = threats
         valuation.recommendations    = recommendations
         valuation.report_text        = executive_summary
-        valuation.model_used         = "gemini-2.0-flash + groq/llama-3.3-70b"
+        valuation.model_used         = "gemini-2.5-flash + groq/deepseek-r1 + groq/llama-3.3-70b"
         valuation.tokens_used        = total_tokens
         valuation.status             = "completed"
 

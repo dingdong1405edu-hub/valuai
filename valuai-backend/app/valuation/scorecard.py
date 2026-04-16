@@ -39,27 +39,29 @@ CRITERIA_WEIGHTS: dict[str, float] = {
     "growth_potential":      0.13,
 }
 
-SCORECARD_SYSTEM_PROMPT = """You are a startup and SME investment analyst scoring a Vietnamese company
-for valuation purposes.
+SCORECARD_SYSTEM_PROMPT = """You are a senior investment analyst scoring a Vietnamese SME for business valuation.
 
-Score each criterion from 0 to 10 based on the provided business context:
-  0-3 = weak/concerning
-  4-6 = average/developing
-  7-8 = strong
-  9-10 = exceptional
+Score each of the 10 criteria from 0 to 10 based on the provided business context:
+  0-3  = weak / high risk / insufficient evidence
+  4-6  = average / developing / some evidence
+  7-8  = strong / clear evidence
+  9-10 = exceptional / market leader / outstanding evidence
 
-Return ONLY valid JSON in this exact format:
+Context may be in Vietnamese — score based on what is stated regardless of language.
+If a criterion has NO information → score 4 (neutral, not penalise for missing docs).
+
+Return ONLY valid JSON (no markdown, no extra text):
 {
-  "team_experience": {"score": <0-10>, "reason": "<1 sentence>"},
-  "market_size": {"score": <0-10>, "reason": "<1 sentence>"},
+  "team_experience":    {"score": <0-10>, "reason": "<1 concise sentence in English>"},
+  "market_size":        {"score": <0-10>, "reason": "<1 sentence>"},
   "product_uniqueness": {"score": <0-10>, "reason": "<1 sentence>"},
-  "customer_traction": {"score": <0-10>, "reason": "<1 sentence>"},
-  "competitive_moat": {"score": <0-10>, "reason": "<1 sentence>"},
-  "financial_health": {"score": <0-10>, "reason": "<1 sentence>"},
-  "business_model": {"score": <0-10>, "reason": "<1 sentence>"},
-  "legal_compliance": {"score": <0-10>, "reason": "<1 sentence>"},
+  "customer_traction":  {"score": <0-10>, "reason": "<1 sentence>"},
+  "competitive_moat":   {"score": <0-10>, "reason": "<1 sentence>"},
+  "financial_health":   {"score": <0-10>, "reason": "<1 sentence>"},
+  "business_model":     {"score": <0-10>, "reason": "<1 sentence>"},
+  "legal_compliance":   {"score": <0-10>, "reason": "<1 sentence>"},
   "esg_sustainability": {"score": <0-10>, "reason": "<1 sentence>"},
-  "growth_potential": {"score": <0-10>, "reason": "<1 sentence>"}
+  "growth_potential":   {"score": <0-10>, "reason": "<1 sentence>"}
 }"""
 
 
@@ -137,29 +139,53 @@ QUALITATIVE INFORMATION:
         breakdown, tokens_used = await groq_json(SCORECARD_SYSTEM_PROMPT, context)
         logger.info(f"[SCORECARD] Groq scoring complete — tokens={tokens_used}")
     except Exception as exc:
-        logger.error(f"[SCORECARD] Groq call failed: {exc}")
-        # Fallback: neutral scores (5/10 each)
+        logger.error(f"[SCORECARD] Groq call failed: {exc}", exc_info=True)
+        # Fallback: neutral scores (4/10 — "no info, don't penalise")
         breakdown = {
-            k: {"score": 5, "reason": "Insufficient data for scoring"}
+            k: {"score": 4, "reason": "Insufficient data for scoring"}
             for k in CRITERIA_WEIGHTS
         }
 
     total_score = _weighted_score(breakdown)
     multiplier = _get_multiplier(total_score)
 
-    # Base valuation on revenue × multiplier
-    base_revenue = max(revenue, 1)  # avoid zero
+    # Base valuation on revenue × multiplier.
+    # If revenue is 0/null, estimate from employee count and industry rather than
+    # silently defaulting to 1 tỷ (which was causing every company to show 0.4 tỷ).
+    if not revenue or revenue <= 0:
+        employees = fin.get("employees") or 10
+        industry = (fin.get("industry") or "").lower()
+        # Revenue-per-employee benchmarks (VND billions/year) by industry
+        rev_per_emp = 2.0  # general default
+        if any(k in industry for k in ("tech", "software", "it", "công nghệ")):
+            rev_per_emp = 3.0
+        elif any(k in industry for k in ("manufacturing", "sản xuất", "factory")):
+            rev_per_emp = 1.5
+        elif any(k in industry for k in ("retail", "bán lẻ", "trade")):
+            rev_per_emp = 4.0
+        base_revenue = max(float(employees) * rev_per_emp, 5.0)
+        logger.warning(
+            f"[SCORECARD] revenue=0/null — estimated {base_revenue:.1f} tỷ "
+            f"from {employees} employees × {rev_per_emp} tỷ/emp"
+        )
+    else:
+        base_revenue = revenue
     baseline = base_revenue * multiplier
 
     value_mid = baseline
     value_low = baseline * 0.80
     value_high = baseline * 1.20
 
-    # Confidence: higher if more qualitative data was available
+    # Confidence: based on available data richness
     qual_fields_present = sum(
-        1 for v in qual.values() if v and v != "not provided" and v != "unknown"
+        1 for v in qual.values()
+        if v and str(v).strip() not in ("not provided", "unknown", "null", "")
     )
-    confidence = min(0.3 + qual_fields_present * 0.08, 0.75)
+    fin_fields_present = sum(
+        1 for k, v in fin.items()
+        if k in ("revenue", "profit", "ebitda") and v and float(v) > 0
+    )
+    confidence = min(0.35 + qual_fields_present * 0.06 + fin_fields_present * 0.08, 0.80)
 
     logger.info(
         f"[SCORECARD] score={total_score:.2f}/10, multiplier={multiplier}×, "
