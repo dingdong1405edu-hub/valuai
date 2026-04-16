@@ -39,15 +39,34 @@ async def trigger_valuation(
     await db.commit()
     await db.refresh(val)
 
-    # Run pipeline in background
+    valuation_id = val.id
+
+    # Run pipeline in background — always marks failed if anything goes wrong
     async def _run_bg():
-        async with db_session() as bg_db:
-            await run_full_valuation(
-                company_id=payload.company_id,
-                session=bg_db,
-                wacc=payload.wacc,
-                private_discount=payload.private_discount,
-            )
+        import asyncio
+        try:
+            async with db_session() as bg_db:
+                await asyncio.wait_for(
+                    run_full_valuation(
+                        company_id=payload.company_id,
+                        session=bg_db,
+                        wacc=payload.wacc,
+                        private_discount=payload.private_discount,
+                    ),
+                    timeout=300,  # 5-minute hard timeout
+                )
+        except Exception as exc:
+            # Top-level safety net: ensure valuation is never stuck at "running"
+            logger.error(f"[VALUATIONS] background task failed: {exc}", exc_info=True)
+            try:
+                async with db_session() as err_db:
+                    stuck = await err_db.get(Valuation, valuation_id)
+                    if stuck and stuck.status == "running":
+                        stuck.status = "failed"
+                        stuck.error_msg = f"Pipeline error: {str(exc)[:400]}"
+                        await err_db.commit()
+            except Exception as db_exc:
+                logger.error(f"[VALUATIONS] could not update failed status: {db_exc}")
 
     background_tasks.add_task(_run_bg)
     return APIResponse.ok(ValuationOut.model_validate(val))

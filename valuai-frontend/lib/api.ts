@@ -130,7 +130,8 @@ export function formatVND(value?: number | null): string {
 export async function pollValuationStatus(
   valuationId: string,
   onUpdate: (status: string) => void,
-  intervalMs: number = 3000
+  intervalMs: number = 3000,
+  timeoutMs: number = 240_000  // 4-minute hard timeout
 ): Promise<Valuation> {
   return new Promise((resolve, reject) => {
     const interval = setInterval(async () => {
@@ -139,16 +140,24 @@ export async function pollValuationStatus(
         onUpdate(statusData.status);
         if (statusData.status === "completed") {
           clearInterval(interval);
+          clearTimeout(timer);
           const full = await getValuation(valuationId);
           resolve(full);
         } else if (statusData.status === "failed") {
           clearInterval(interval);
-          reject(new Error(statusData.error || "Valuation failed"));
+          clearTimeout(timer);
+          reject(new Error(statusData.error || "Valuation failed — check your documents and try again."));
         }
       } catch (err) {
         clearInterval(interval);
+        clearTimeout(timer);
         reject(err);
       }
     }, intervalMs);
+
+    const timer = setTimeout(() => {
+      clearInterval(interval);
+      reject(new Error("Valuation timed out after 4 minutes. The AI pipeline may be overloaded — please try again."));
+    }, timeoutMs);
   });
 }
