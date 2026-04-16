@@ -109,23 +109,24 @@ async def semantic_search(
 
     query_vector = await embed_text(query, task_type="retrieval_query")
 
-    # Raw SQL for pgvector cosine similarity
-    sql = text("""
+    # Format vector as PostgreSQL literal (safe — only floats, no SQL injection possible)
+    vec_literal = "[" + ",".join(str(f) for f in query_vector) + "]"
+
+    # Raw SQL for pgvector cosine similarity — vector embedded directly to avoid
+    # asyncpg's incompatibility with :param::type cast syntax in SQLAlchemy text()
+    sql = text(f"""
         SELECT id, content, chunk_index, document_id,
-               1 - (embedding <=> :query_vec::vector) AS similarity
+               1 - (embedding <=> '{vec_literal}'::vector) AS similarity
         FROM embeddings
         WHERE company_id = :company_id
           AND embedding IS NOT NULL
-        ORDER BY embedding <=> :query_vec::vector
+        ORDER BY embedding <=> '{vec_literal}'::vector
         LIMIT :top_k
     """)
 
-    # Format vector as PostgreSQL array literal
-    vec_str = "[" + ",".join(str(f) for f in query_vector) + "]"
-
     result = await session.execute(
         sql,
-        {"query_vec": vec_str, "company_id": company_id, "top_k": top_k},
+        {"company_id": company_id, "top_k": top_k},
     )
     rows = result.fetchall()
 
