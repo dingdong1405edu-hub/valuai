@@ -294,8 +294,12 @@ async def run_full_valuation(
         return valuation
 
     except Exception as exc:
-        valuation.status = "failed"
-        valuation.error_msg = str(exc)[:500]
-        await session.commit()
-        logger.error(f"[ORCHESTRATOR] pipeline FAILED: {exc}", exc_info=True)
+        logger.error(f"[ORCHESTRATOR] pipeline FAILED (original error): {exc}", exc_info=True)
+        try:
+            await session.rollback()  # must rollback aborted tx before any new SQL
+            valuation.status = "failed"
+            valuation.error_msg = str(exc)[:500]
+            await session.commit()
+        except Exception as commit_exc:
+            logger.error(f"[ORCHESTRATOR] could not save failed status: {commit_exc}")
         raise
