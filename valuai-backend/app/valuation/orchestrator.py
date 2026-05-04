@@ -102,11 +102,11 @@ def _synthesize_range(
     dcf_mid: float, dcf_low: float, dcf_high: float, dcf_conf: float,
     comp_mid: float, comp_low: float, comp_high: float, comp_conf: float,
     score_mid: float, score_low: float, score_high: float, score_conf: float,
-) -> tuple[float, float, float]:
+) -> tuple[float, float, float, dict]:
     """
     Confidence-weighted synthesis of three valuation methods.
     All methods included (no exclusion threshold) — low confidence gets low weight.
-    Returns (final_min, final_mid, final_max).
+    Returns (final_min, final_mid, final_max, norm_weights).
     """
     methods = [
         ("dcf",        dcf_mid,   dcf_low,   dcf_high,   dcf_conf),
@@ -119,7 +119,7 @@ def _synthesize_range(
 
     if not valid:
         logger.warning("[ORCHESTRATOR] all methods returned 0 — using minimum fallback")
-        return 5.0, 10.0, 20.0  # absolute minimum: 10 tỷ mid
+        return 5.0, 10.0, 20.0, {}
 
     # Confidence × base_weight — use 0.1 as minimum so no method is completely ignored
     raw_weights = {
@@ -127,7 +127,7 @@ def _synthesize_range(
         for name, mid, low, high, conf in valid
     }
     total_w = sum(raw_weights.values())
-    norm_weights = {k: v / total_w for k, v in raw_weights.items()}
+    norm_weights = {k: round(v / total_w, 3) for k, v in raw_weights.items()}
 
     final_mid = sum(
         mid * norm_weights[name]
@@ -140,7 +140,7 @@ def _synthesize_range(
         f"[ORCHESTRATOR] synthesis weights: {norm_weights}, "
         f"final=[{final_min:,.1f}, {final_mid:,.1f}, {final_max:,.1f}]"
     )
-    return final_min, final_mid, final_max
+    return final_min, final_mid, final_max, norm_weights
 
 
 async def run_full_valuation(
@@ -212,7 +212,7 @@ async def run_full_valuation(
         )
 
         # Step 4: Synthesize
-        final_min, final_mid, final_max = _synthesize_range(
+        final_min, final_mid, final_max, norm_weights = _synthesize_range(
             dcf_mid, dcf_low, dcf_high, dcf_conf,
             comp_mid, comp_low, comp_high, comp_conf,
             score_mid, score_low, score_high, score_conf,
@@ -253,7 +253,147 @@ async def run_full_valuation(
             strengths = weaknesses = opportunities = threats = recommendations = []
             executive_summary = "Report synthesis unavailable."
 
-        # Step 7: Persist
+        # Step 7: Build process log
+        fin_agg = agg_data.get("financial", {})
+        qual_agg = agg_data.get("qualitative", {})
+        qual_fields_present = [k for k, v in qual_agg.items() if v and str(v).strip() not in ("", "null", "not provided", "unknown")]
+
+        scorecard_top = []
+        if score_result:
+            scored_items = [
+                (k, v.get("score", 0), v.get("reason", ""))
+                for k, v in score_result.breakdown.items()
+                if isinstance(v, dict)
+            ]
+            scorecard_top = sorted(scored_items, key=lambda x: -x[1])[:3]
+
+        process_log = {
+            "steps": [
+                {
+                    "step": 1,
+                    "name": "Document Aggregation",
+                    "model": None,
+                    "summary": (
+                        f"Aggregated data from documents. "
+                        f"Extracted: revenue={fin_agg.get('revenue') or 'N/A'} tỷ, "
+                        f"profit={fin_agg.get('profit') or 'N/A'} tỷ, "
+                        f"employees={fin_agg.get('employees') or 'N/A'}, "
+                        f"industry={fin_agg.get('industry') or 'N/A'}"
+                    ),
+                    "details": {
+                        "financial_extracted": {k: v for k, v in fin_agg.items() if v is not None},
+                        "qualitative_fields_found": qual_fields_present,
+                    },
+                },
+                {
+                    "step": 2,
+                    "name": "DCF Valuation (Discounted Cash Flow)",
+                    "model": "Gemini 2.0 Flash",
+                    "summary": (
+                        f"Result: {dcf_mid:,.1f} tỷ VND (confidence {dcf_conf:.0%})"
+                        if dcf_result else "DCF failed — skipped"
+                    ),
+                    "details": {
+                        "assumptions": dcf_result.assumptions if dcf_result else {},
+                        "scenarios_tỷ_VND": {
+                            "conservative": round(dcf_low, 1),
+                            "base": round(dcf_mid, 1),
+                            "optimistic": round(dcf_high, 1),
+                        } if dcf_result else {},
+                        "confidence": dcf_conf,
+                    },
+                },
+                {
+                    "step": 3,
+                    "name": "Comparable Valuation (Market Multiples)",
+                    "model": "HOSE/HNX market data" if (comp_result and comp_result.source == "fireant") else "Industry benchmark table",
+                    "summary": (
+                        f"Result: {comp_mid:,.1f} tỷ VND (confidence {comp_conf:.0%}) "
+                        f"— source: {comp_result.source if comp_result else 'fallback'}, "
+                        f"peers: {len(comp_result.peers) if comp_result else 0}"
+                        if comp_result else "Comparable failed — skipped"
+                    ),
+                    "details": {
+                        "source": comp_result.source if comp_result else "fallback",
+                        "multiples_used": comp_result.multiples_used if comp_result else {},
+                        "private_discount": "25%",
+                        "scenarios_tỷ_VND": {
+                            "low": round(comp_low, 1),
+                            "mid": round(comp_mid, 1),
+                            "high": round(comp_high, 1),
+                        } if comp_result else {},
+                        "confidence": comp_conf,
+                    },
+                },
+                {
+                    "step": 4,
+                    "name": "Scorecard Valuation (Qualitative Assessment)",
+                    "model": "Groq llama-3.3-70b-versatile",
+                    "summary": (
+                        f"Score: {score_result.total_score:.1f}/10 → {score_mid:,.1f} tỷ VND (confidence {score_conf:.0%})"
+                        if score_result else "Scorecard failed — skipped"
+                    ),
+                    "details": {
+                        "total_score": score_result.total_score if score_result else 0,
+                        "top_3_criteria": [
+                            {"criterion": k.replace("_", " ").title(), "score": s, "reason": r}
+                            for k, s, r in scorecard_top
+                        ],
+                        "baseline_value_tỷ": round(score_result.baseline_value if score_result else 0, 1),
+                        "scenarios_tỷ_VND": {
+                            "low": round(score_low, 1),
+                            "mid": round(score_mid, 1),
+                            "high": round(score_high, 1),
+                        } if score_result else {},
+                        "confidence": score_conf,
+                    },
+                },
+                {
+                    "step": 5,
+                    "name": "Synthesis & Confidence-Weighted Final Range",
+                    "model": None,
+                    "summary": (
+                        f"Final range: {final_min:,.1f} — {final_mid:,.1f} — {final_max:,.1f} tỷ VND"
+                    ),
+                    "details": {
+                        "weights_applied": {k: f"{v:.1%}" for k, v in norm_weights.items()},
+                        "method_values_tỷ_VND": {
+                            "dcf": round(dcf_mid, 1),
+                            "comparable": round(comp_mid, 1),
+                            "scorecard": round(score_mid, 1),
+                        },
+                        "final_range_tỷ_VND": {
+                            "min": round(final_min, 1),
+                            "mid": round(final_mid, 1),
+                            "max": round(final_max, 1),
+                        },
+                    },
+                },
+                {
+                    "step": 6,
+                    "name": "SWOT Analysis & Recommendations",
+                    "model": "Gemini 2.0 Flash",
+                    "summary": (
+                        f"Generated {len(strengths)} strengths, {len(weaknesses)} weaknesses, "
+                        f"{len(opportunities)} opportunities, {len(threats)} threats, "
+                        f"{len(recommendations)} recommendations — {synthesis_tokens} tokens used"
+                    ),
+                    "details": {
+                        "rag_chunks_used": len(rag_chunks),
+                        "tokens_used": synthesis_tokens,
+                    },
+                },
+            ],
+            "total_tokens": (
+                (dcf_result.tokens_used if dcf_result else 0)
+                + (score_result.tokens_used if score_result else 0)
+                + synthesis_tokens
+            ),
+            "models_used": ["Gemini 2.0 Flash", "Groq llama-3.3-70b-versatile"],
+            "pipeline_status": "completed",
+        }
+
+        # Step 8: Persist
         total_tokens = (
             (dcf_result.tokens_used if dcf_result else 0)
             + (score_result.tokens_used if score_result else 0)
@@ -285,6 +425,7 @@ async def run_full_valuation(
         valuation.report_text         = executive_summary
         valuation.model_used          = "gemini-2.5-flash + groq/deepseek-r1 + groq/llama-3.3-70b"
         valuation.tokens_used         = total_tokens
+        valuation.process_log         = process_log
         valuation.status              = "completed"
 
         await session.commit()

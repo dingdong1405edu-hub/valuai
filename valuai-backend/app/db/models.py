@@ -119,6 +119,7 @@ class Valuation(Base):
     model_used: Mapped[str | None] = mapped_column(String(100))
     tokens_used: Mapped[int] = mapped_column(Integer, default=0)
     error_msg: Mapped[str | None] = mapped_column(Text)
+    process_log: Mapped[dict] = mapped_column(JSONB, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

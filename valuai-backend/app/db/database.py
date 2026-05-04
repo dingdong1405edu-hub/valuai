@@ -59,7 +59,7 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Verify DB connection on startup. Schema is managed via migrations/001_init.sql."""
+    """Verify DB connection and auto-apply pending schema migrations on startup."""
     try:
         async with engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
@@ -67,3 +67,32 @@ async def init_db() -> None:
     except Exception as exc:
         logger.error(f"[DB] Connection FAILED: {exc}")
         raise
+
+    # ── Auto-migrations (idempotent — safe to run on every startup) ───────────
+    _MIGRATIONS = [
+        # 002: process_log column for pipeline transparency diagram
+        "ALTER TABLE valuations ADD COLUMN IF NOT EXISTS process_log JSONB NOT NULL DEFAULT '{}'",
+        # 003: convert TEXT[] → JSONB for SWOT arrays so ORM (JSONB) matches DB
+        """DO $$ BEGIN
+            IF EXISTS (
+                SELECT 1 FROM information_schema.columns
+                WHERE table_name = 'valuations'
+                  AND column_name = 'strengths'
+                  AND data_type = 'ARRAY'
+            ) THEN
+                ALTER TABLE valuations
+                    ALTER COLUMN strengths      TYPE JSONB USING to_json(strengths)::jsonb,
+                    ALTER COLUMN weaknesses     TYPE JSONB USING to_json(weaknesses)::jsonb,
+                    ALTER COLUMN opportunities  TYPE JSONB USING to_json(opportunities)::jsonb,
+                    ALTER COLUMN threats        TYPE JSONB USING to_json(threats)::jsonb,
+                    ALTER COLUMN recommendations TYPE JSONB USING to_json(recommendations)::jsonb;
+            END IF;
+        END $$""",
+    ]
+    for stmt in _MIGRATIONS:
+        try:
+            async with engine.begin() as conn:
+                await conn.execute(text(stmt))
+            logger.info(f"[DB] migration OK: {stmt[:70].strip()}…")
+        except Exception as mig_exc:
+            logger.warning(f"[DB] migration skipped (likely already applied): {mig_exc}")

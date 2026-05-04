@@ -248,7 +248,51 @@ psql $DATABASE_PUBLIC_URL -f migrations/001_init.sql
 
 ---
 
-## 11. Debugging Valuation Issues
+## 11. UX Features
+
+### 11.1 Upload Wizard — Per-step Content Hints
+
+Each wizard step (1–8) shows an amber hint box explaining what the document or input
+should ideally contain to maximise valuation accuracy. Step 9 shows a numbered "What
+the AI will do" list explaining all 6 pipeline stages before the user submits.
+
+Hints are defined in `STEP_HINTS` constant in `valuai-frontend/components/UploadWizard/index.tsx`.
+
+### 11.2 Pipeline Diagram (Results Page)
+
+The `ValuationDashboard` renders a full visual pipeline diagram **below** the Executive
+Summary, showing every step the AI performed:
+
+```
+[📁 Documents] → [🔍 Parse & Extract]
+                        ↓ 3 methods in parallel
+        ┌──────────────────────────────────┐
+        │ ⚡ asyncio.gather                 │
+        │ [📈 DCF] [🏢 Comparable] [⭐ Score] │
+        └──────────────────────────────────┘
+                        ↓ confidence-weighted blend
+              [⚖️ Synthesis: min–mid–max]
+                        ↓
+              [📝 SWOT + Recommendations]
+```
+
+Each node in the diagram shows **real data** from that valuation:
+- Documents node: extracted revenue, profit, employees, qualitative fields
+- DCF node: Gemini-chosen growth rate, WACC, EBITDA margin + scenario values
+- Comparable node: P/E, EV/EBITDA, EV/Revenue multiples used + private discount
+- Scorecard node: total score X/10, top 3 criteria with scores
+- Synthesis node: normalized weights (e.g. DCF 52%, Comparable 31%, Scorecard 17%)
+- SWOT node: count of strengths/weaknesses/opportunities/threats + RAG chunks used
+
+Data flows from `valuation.process_log` (JSONB field, populated by orchestrator) and
+`valuation.*` fields directly.
+
+**Migration required for process_log column:**
+```bash
+psql $DATABASE_PUBLIC_URL -f migrations/002_add_process_log.sql
+```
+
+## 12. Debugging Valuation Issues
 
 If valuations return the same fixed number:
 
@@ -269,3 +313,5 @@ If valuations return the same fixed number:
    [SCORECARD] score=X/10, multiplier=Y×, mid=Z
    ```
    `mid` should vary per company. If always 0.4 → revenue fallback failed.
+
+4. Check `[ORCHESTRATOR] process_log saved` — if missing, orchestrator crashed before step 7.

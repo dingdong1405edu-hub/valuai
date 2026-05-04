@@ -55,8 +55,24 @@ export interface Valuation {
   report_text?: string;
   model_used?: string;
   tokens_used: number;
+  process_log?: ProcessLog;
 
   created_at: string;
+}
+
+export interface ProcessLogStep {
+  step: number;
+  name: string;
+  model: string | null;
+  summary: string;
+  details: Record<string, unknown>;
+}
+
+export interface ProcessLog {
+  steps: ProcessLogStep[];
+  total_tokens: number;
+  models_used: string[];
+  pipeline_status: string;
 }
 
 export interface APIResponse<T> {

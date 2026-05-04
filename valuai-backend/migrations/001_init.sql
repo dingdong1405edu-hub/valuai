@@ -78,16 +78,17 @@ CREATE TABLE IF NOT EXISTS valuations (
     final_range_max     NUMERIC(20, 2),
     currency            CHAR(3) NOT NULL DEFAULT 'VND',
     -- Qualitative output
-    strengths           TEXT[] DEFAULT '{}',
-    weaknesses          TEXT[] DEFAULT '{}',
-    opportunities       TEXT[] DEFAULT '{}',
-    threats             TEXT[] DEFAULT '{}',
-    recommendations     TEXT[] DEFAULT '{}',
+    strengths           JSONB DEFAULT '[]',
+    weaknesses          JSONB DEFAULT '[]',
+    opportunities       JSONB DEFAULT '[]',
+    threats             JSONB DEFAULT '[]',
+    recommendations     JSONB DEFAULT '[]',
     report_text         TEXT,   -- full narrative from Gemini
     -- Meta
     model_used          VARCHAR(100),
     tokens_used         INT DEFAULT 0,
     error_msg           TEXT,
+    process_log         JSONB NOT NULL DEFAULT '{}',
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

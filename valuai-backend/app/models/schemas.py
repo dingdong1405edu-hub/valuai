@@ -173,5 +173,6 @@ class ValuationOut(BaseModel):
     report_text: Optional[str] = None
     model_used: Optional[str] = None
     tokens_used: int = 0
+    process_log: dict = {}
 
     created_at: datetime

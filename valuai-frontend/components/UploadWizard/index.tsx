@@ -23,6 +23,89 @@ interface StepFile {
 
 const emptyStep = (): StepFile => ({ file: null, url: "", uploaded: false, error: "" });
 
+// ─── Content hints per step ────────────────────────────────────────
+
+interface Hint {
+  title: string;
+  items: string[];
+}
+
+const STEP_HINTS: Record<number, Hint> = {
+  1: {
+    title: "What improves valuation accuracy:",
+    items: [
+      "Employee count — used to estimate revenue when financial data is missing",
+      "Founded year — business maturity affects the scoring multiplier",
+      "Industry — determines the correct P/E and EV/EBITDA benchmark multiples",
+    ],
+  },
+  2: {
+    title: "Your financial report should contain:",
+    items: [
+      "Doanh thu (Revenue) — the single most important figure for all three methods",
+      "Lợi nhuận sau thuế (Net profit) — used in P/E comparable calculation",
+      "EBITDA — earnings before interest, tax, depreciation & amortisation",
+      "Tổng tài sản (Total assets) & Nợ phải trả (Total liabilities / debt)",
+      "Năm tài chính (Fiscal year) — e.g. 2023 or 2024",
+      "Tỷ lệ tăng trưởng doanh thu (YoY revenue growth %)",
+    ],
+  },
+  3: {
+    title: "Ideal website / fanpage content for AI analysis:",
+    items: [
+      "About Us — company history, mission, leadership team",
+      "Products / Services — descriptions, pricing, key features",
+      "Client logos, case studies, or testimonials",
+      "Recent news, press releases, or milestones",
+    ],
+  },
+  4: {
+    title: "Your catalogue should ideally contain:",
+    items: [
+      "Product / service names and full descriptions",
+      "Pricing tiers or price ranges",
+      "Target customer segments",
+      "Unique selling propositions (USPs) and competitive advantages",
+    ],
+  },
+  5: {
+    title: "Your capability profile should ideally contain:",
+    items: [
+      "Company overview and years in operation",
+      "Major client names and representative projects",
+      "Certifications, awards, or industry accreditations",
+      "Delivery capacity and team size breakdown",
+    ],
+  },
+  6: {
+    title: "Your business plan should ideally contain:",
+    items: [
+      "Revenue projections for 3–5 years with assumptions",
+      "Market size (TAM / SAM) and annual growth rate",
+      "Competitive landscape and positioning",
+      "Funding requirements and planned use of funds",
+    ],
+  },
+  7: {
+    title: "Owner / founder CV should ideally contain:",
+    items: [
+      "Years of experience in this specific industry",
+      "Previous companies founded, led, or exited",
+      "Educational background and domain expertise",
+      "Key achievements, recognitions, or media coverage",
+    ],
+  },
+  8: {
+    title: "CRM / Accounting data should ideally contain:",
+    items: [
+      "Monthly or quarterly revenue breakdown",
+      "Customer count and churn / retention rates",
+      "Recurring vs. one-time revenue split",
+      "Top customers by revenue contribution",
+    ],
+  },
+};
+
 // ─── Sub-components ────────────────────────────────────────────────
 
 function ProgressBar({ current, total }: { current: number; total: number }) {
@@ -62,6 +145,25 @@ function StepIndicator({ steps, current }: { steps: typeof WIZARD_STEPS; current
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ContentHint({ hint }: { hint: Hint }) {
+  return (
+    <div className="mt-5 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+      <div className="flex items-center gap-1.5 mb-2">
+        <span className="text-amber-500 text-sm">💡</span>
+        <span className="text-xs font-semibold text-amber-800">{hint.title}</span>
+      </div>
+      <ul className="space-y-1">
+        {hint.items.map((item, i) => (
+          <li key={i} className="flex items-start gap-2 text-xs text-amber-800">
+            <span className="w-1 h-1 rounded-full bg-amber-400 mt-1.5 shrink-0" />
+            {item}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -254,6 +356,7 @@ export default function UploadWizard() {
   };
 
   const currentStepInfo = WIZARD_STEPS[step - 1];
+  const hint = STEP_HINTS[step];
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -324,15 +427,19 @@ export default function UploadWizard() {
                 />
               </div>
             </div>
+            {hint && <ContentHint hint={hint} />}
           </div>
         )}
 
         {step === 2 && (
-          <FileDropzone
-            onFile={(f) => updateStep(2, { file: f })}
-            file={stepData[2].file}
-            label="Upload Financial Report (PDF or Excel) *"
-          />
+          <>
+            <FileDropzone
+              onFile={(f) => updateStep(2, { file: f })}
+              file={stepData[2].file}
+              label="Upload Financial Report (PDF or Excel) *"
+            />
+            {hint && <ContentHint hint={hint} />}
+          </>
         )}
 
         {step === 3 && (
@@ -357,15 +464,19 @@ export default function UploadWizard() {
                 onChange={(e) => updateStep(3, { url: e.target.value })}
               />
             </div>
+            {hint && <ContentHint hint={hint} />}
           </div>
         )}
 
         {[4, 5, 6, 7, 8].includes(step) && (
-          <FileDropzone
-            onFile={(f) => updateStep(step, { file: f })}
-            file={stepData[step].file}
-            label={`Upload ${currentStepInfo.title} (PDF)`}
-          />
+          <>
+            <FileDropzone
+              onFile={(f) => updateStep(step, { file: f })}
+              file={stepData[step].file}
+              label={`Upload ${currentStepInfo.title} (PDF)`}
+            />
+            {hint && <ContentHint hint={hint} />}
+          </>
         )}
 
         {step === 9 && (
@@ -403,8 +514,37 @@ export default function UploadWizard() {
                   })}
               </div>
             </div>
+
+            {/* What the AI will do */}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-base">🤖</span>
+                <span className="text-sm font-semibold text-gray-800">What the AI will do</span>
+              </div>
+              <ol className="space-y-2">
+                {[
+                  { icon: "📄", label: "Parse & extract", desc: "Gemini Vision reads your documents and Groq extracts structured financial + qualitative data" },
+                  { icon: "📈", label: "DCF Valuation", desc: "Gemini estimates growth parameters; Python calculates 3 scenarios (conservative / base / optimistic)" },
+                  { icon: "🏢", label: "Comparable Valuation", desc: "Applies Vietnamese listed-company multiples (P/E, EV/EBITDA, EV/Revenue) with a 25% private discount" },
+                  { icon: "⭐", label: "Scorecard Valuation", desc: "Groq scores 10 qualitative criteria (0–10 each) and maps the total to a revenue multiplier" },
+                  { icon: "⚖️", label: "Confidence-weighted synthesis", desc: "Three methods are blended by confidence × base weight (DCF 45% / Comparable 35% / Scorecard 20%)" },
+                  { icon: "📝", label: "SWOT & Recommendations", desc: "Gemini generates a full SWOT analysis, strategic recommendations, and executive summary using your documents as context" },
+                ].map((item, i) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <div className="w-5 h-5 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center text-xs font-bold shrink-0 mt-0.5">
+                      {i + 1}
+                    </div>
+                    <div>
+                      <span className="text-xs font-semibold text-gray-800">{item.icon} {item.label} — </span>
+                      <span className="text-xs text-gray-600">{item.desc}</span>
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+
             <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 text-sm text-yellow-800">
-              <strong>Note:</strong> The valuation will run for ~2-3 minutes. You&apos;ll be
+              <strong>Note:</strong> The valuation will run for ~2–3 minutes. You&apos;ll be
               redirected to the results page automatically.
             </div>
           </div>
