@@ -1,105 +1,6 @@
 """Trailer HTML renderer — 4-page free preview via Playwright."""
 import datetime
-
-_FONTS = (
-    '<link rel="preconnect" href="https://fonts.googleapis.com">'
-    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
-    '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;0,700;1,400'
-    '&family=IBM+Plex+Serif:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600'
-    '&family=Architects+Daughter&display=swap" rel="stylesheet">'
-)
-
-
-def _css(accent: str) -> str:
-    return f"""<style>
-:root{{
-  --ink:#1a2b4a;--ink-soft:#3a4a66;--accent:{accent};
-  --line:#c9cfd9;--line-soft:#e4e8ef;--paper:#ffffff;--bg:#6b7280;--grey-fill:#eef1f5;
-  --sans:'IBM Plex Sans',sans-serif;--serif:'IBM Plex Serif',serif;
-  --mono:'IBM Plex Mono',monospace;--hand:'Architects Daughter',cursive;--head:var(--serif);
-}}
-*{{box-sizing:border-box;margin:0;padding:0;}}
-html,body{{background:var(--bg);font-family:var(--sans);color:var(--ink);}}
-body{{padding:30px 0 80px;display:flex;flex-direction:column;align-items:center;gap:34px;}}
-.page{{width:794px;min-height:1123px;background:var(--paper);position:relative;box-shadow:0 18px 50px #00000040;overflow:hidden;}}
-.page-tag{{position:absolute;top:14px;right:18px;font-family:var(--hand);font-size:13px;color:var(--accent);transform:rotate(3deg);opacity:.85;z-index:5;}}
-.wm{{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-28deg);font-family:var(--hand);font-size:120px;color:#1a2b4a08;letter-spacing:6px;pointer-events:none;z-index:0;font-weight:400;white-space:nowrap;}}
-.logo{{display:inline-flex;align-items:center;gap:8px;font-family:var(--hand);font-size:13px;color:var(--ink-soft);}}
-.logo i{{width:26px;height:26px;border:1.5px dashed var(--ink-soft);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:11px;font-family:var(--sans);font-weight:700;}}
-/* ── COVER ── */
-.cov{{height:1123px;display:flex;flex-direction:column;padding:74px 76px 60px;position:relative;z-index:1;}}
-.cov .top{{display:flex;justify-content:space-between;align-items:flex-start;}}
-.cov .kicker{{font-family:var(--sans);font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--accent);font-weight:600;}}
-.cov h1{{font-family:var(--head);font-weight:700;font-size:50px;line-height:1.05;color:var(--ink);margin-top:auto;letter-spacing:-.5px;}}
-.cov .sub{{font-family:var(--sans);font-size:16px;color:var(--ink-soft);margin-top:18px;}}
-.cov .sub b{{color:var(--accent);font-weight:600;}}
-.cov .intro{{margin-top:22px;font-size:14px;line-height:1.7;color:var(--ink-soft);max-width:62ch;border-left:3px solid var(--accent);padding-left:16px;}}
-.cov .foot{{margin-top:auto;display:flex;justify-content:space-between;align-items:flex-end;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;}}
-.cov .disc{{font-style:italic;}}
-.ribbon{{height:8px;width:120px;background:var(--accent);margin-bottom:34px;}}
-.lock-box{{background:var(--grey-fill);border:1.5px dashed var(--line);border-radius:10px;padding:24px 30px;margin-top:30px;text-align:center;}}
-.lock-box .lbl{{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:10px;}}
-.lock-box .val{{font-size:28px;font-weight:700;font-family:var(--mono);color:#c9cfd9;letter-spacing:5px;}}
-.lock-box .note{{font-size:11px;color:var(--ink-soft);margin-top:10px;font-family:var(--hand);}}
-/* ── SECTION ── */
-.sec{{padding:64px 64px 100px;position:relative;z-index:1;min-height:1123px;display:flex;flex-direction:column;}}
-.pagefoot{{position:absolute;left:64px;right:64px;bottom:34px;display:flex;justify-content:space-between;font-size:10.5px;color:var(--ink-soft);border-top:1px solid var(--line-soft);padding-top:10px;}}
-/* ── DIRECTION B — Banded rows ── */
-.b-head{{display:flex;align-items:flex-end;gap:18px;border-bottom:3px solid var(--ink);padding-bottom:14px;margin-bottom:24px;}}
-.b-num{{font-family:var(--head);font-size:64px;font-weight:700;color:var(--accent);line-height:.8;}}
-.b-htext h2{{font-family:var(--head);font-size:30px;font-weight:700;}}
-.b-htext .en{{font-family:var(--hand);color:var(--ink-soft);font-size:16px;}}
-.b-htext .d{{font-size:13px;color:var(--ink-soft);margin-top:4px;}}
-.band{{display:grid;grid-template-columns:36% 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:11px;}}
-.band .left{{background:var(--ink);color:#fff;padding:14px 18px;display:flex;flex-direction:column;justify-content:center;}}
-.band .left .nm{{font-family:var(--head);font-weight:600;font-size:15px;line-height:1.25;}}
-.band .left .fx{{font-family:var(--mono);font-size:10px;color:#cdd6e6;margin-top:8px;border-top:1px solid #ffffff22;padding-top:7px;}}
-.band .right{{padding:12px 20px;display:flex;gap:30px;align-items:center;}}
-.cell .lab{{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:3px;}}
-.cell .val{{font-size:15px;font-weight:600;color:var(--ink);font-family:var(--mono);}}
-.cell .yoy{{font-size:12px;margin-top:2px;}}
-.pos{{color:#10b981;font-weight:700;}}
-.neg{{color:#ef4444;font-weight:700;}}
-/* ── DIRECTION A — Ledger matrix ── */
-.a-head{{margin-bottom:20px;}}
-.a-eyebrow{{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}}
-.a-eyebrow b{{color:var(--accent);}}
-.a-title{{font-family:var(--head);font-size:32px;font-weight:700;margin-top:6px;}}
-.a-en{{font-family:var(--hand);color:var(--accent);font-size:17px;}}
-.ind-box{{background:var(--grey-fill);border-radius:8px;padding:16px 20px;margin-bottom:18px;border-left:4px solid var(--accent);}}
-.ind-box .nm{{font-family:var(--head);font-size:17px;font-weight:700;margin-bottom:6px;}}
-.ind-box .ov{{font-size:11.5px;color:var(--ink-soft);line-height:1.6;}}
-.ind-box .meta{{display:flex;gap:22px;font-size:11px;color:var(--ink-soft);margin-top:10px;flex-wrap:wrap;}}
-.ind-box .meta b{{color:var(--accent);}}
-table.ledger{{width:100%;border-collapse:collapse;font-size:12px;}}
-.ledger thead th{{background:var(--ink);color:#fff;text-align:left;padding:10px 12px;font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600;}}
-.ledger tbody td{{border-bottom:1px solid var(--line-soft);padding:11px 12px;vertical-align:middle;}}
-.ledger tbody tr:nth-child(even) td{{background:#f7f9fb;}}
-.ledger .nm{{font-weight:600;color:var(--ink);}}
-.ledger .v{{font-family:var(--mono);font-size:12px;font-weight:600;}}
-.ledger .good{{color:#10b981;font-weight:700;}}
-.ledger .warning{{color:#f59e0b;font-weight:700;}}
-.ledger .poor{{color:#ef4444;font-weight:700;}}
-.ledger .na{{color:var(--ink-soft);}}
-/* ── DIRECTION C — Sidebar report ── */
-.c-wrap{{display:grid;grid-template-columns:260px 1fr;height:1123px;}}
-.c-side{{background:var(--ink);color:#fff;padding:60px 32px;display:flex;flex-direction:column;}}
-.c-side .big{{font-family:var(--head);font-size:90px;font-weight:700;color:#ffffff1c;line-height:.8;}}
-.c-side .lbl{{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-top:26px;}}
-.c-side h2{{font-family:var(--head);font-size:26px;font-weight:600;margin-top:8px;line-height:1.15;}}
-.c-side .en{{font-family:var(--hand);font-size:15px;color:#cdd6e6;margin-top:4px;}}
-.c-side .d{{font-size:12px;line-height:1.65;color:#c2cad8;margin-top:22px;border-top:1px solid #ffffff22;padding-top:18px;}}
-.c-side .sidefoot{{margin-top:auto;font-size:10px;color:#9aa6bd;line-height:1.6;}}
-.c-main{{padding:50px 44px;display:flex;flex-direction:column;}}
-.cta-list{{flex:1;display:flex;flex-direction:column;justify-content:center;}}
-.cta-row{{display:flex;align-items:flex-start;gap:16px;padding:13px 0;border-bottom:1px solid var(--line-soft);}}
-.cta-row:last-child{{border-bottom:0;}}
-.cta-row .ico{{font-size:18px;flex-shrink:0;margin-top:1px;}}
-.cta-row .txt .nm{{font-family:var(--head);font-size:14px;font-weight:600;color:var(--ink);}}
-.cta-row .txt .d{{font-size:11px;color:var(--ink-soft);line-height:1.5;margin-top:2px;}}
-.c-mainfoot{{margin-top:auto;padding-top:14px;border-top:1px solid var(--line-soft);display:flex;justify-content:space-between;font-size:10px;color:var(--ink-soft);}}
-@media print{{body{{background:white;padding:0;gap:0;}}.page{{box-shadow:none;}}}}
-</style>"""
+from html_themes import FONTS, build_styles, build_theme_bar
 
 
 def _fmt(v, d=0) -> str:
@@ -147,6 +48,9 @@ def render_trailer_html(payload: dict, config: dict = None,
 
     colors = config.get("style", {}).get("colors", {})
     accent = brand.get("accent") or colors.get("accent", "#b08d57")
+    report_css = config.get("style", {}).get("report_css", {})
+    theme = report_css.get("html_theme", "A")
+    custom_css = report_css.get("custom_css", "")
 
     # ── PAGE 1: COVER ─────────────────────────────────────────────
     pg1 = f"""
@@ -201,27 +105,14 @@ def render_trailer_html(payload: dict, config: dict = None,
         prev_cell = ""
         yoy_cell = ""
         if prev is not None:
-            prev_cell = f"""<div class="cell">
-          <div class="lab">{period_prev}</div>
-          <div class="val">{_fmt(prev)}</div>
-        </div>"""
-            yoy_cell = f"""<div class="cell">
-          <div class="lab">YoY</div>
-          <div class="yoy">{_yoy(cur, prev) or "—"}</div>
-        </div>"""
+            prev_cell = f'<div class="cell"><div class="lab">{period_prev}</div><div class="val">{_fmt(prev)}</div></div>'
+            yoy_cell = f'<div class="cell"><div class="lab">YoY</div><div class="yoy">{_yoy(cur, prev) or "—"}</div></div>'
         bands_html += f"""
 <div class="band">
-  <div class="left">
-    <div class="nm">{label}</div>
-    <div class="fx">{key}</div>
-  </div>
+  <div class="left"><div class="nm">{label}</div><div class="fx">{key}</div></div>
   <div class="right">
-    <div class="cell">
-      <div class="lab">{period_cur}</div>
-      <div class="val">{_fmt(cur)}</div>
-    </div>
-    {prev_cell}
-    {yoy_cell}
+    <div class="cell"><div class="lab">{period_cur}</div><div class="val">{_fmt(cur)}</div></div>
+    {prev_cell}{yoy_cell}
   </div>
 </div>"""
 
@@ -238,10 +129,7 @@ def render_trailer_html(payload: dict, config: dict = None,
       </div>
     </div>
     {bands_html}
-    <div class="pagefoot">
-      <span>{brand_name} — Báo cáo tài chính</span>
-      <span>Trang 2 / 4</span>
-    </div>
+    <div class="pagefoot"><span>{brand_name} — Báo cáo tài chính</span><span>Trang 2 / 4</span></div>
   </div>
 </div>"""
 
@@ -300,15 +188,10 @@ def render_trailer_html(payload: dict, config: dict = None,
       </div>
     </div>
     <table class="ledger">
-      <thead>
-        <tr><th>Chỉ số tài chính</th><th>Giá trị</th><th>Đánh giá</th></tr>
-      </thead>
+      <thead><tr><th>Chỉ số tài chính</th><th>Giá trị</th><th>Đánh giá</th></tr></thead>
       <tbody>{ratio_rows}</tbody>
     </table>
-    <div class="pagefoot">
-      <span>{brand_name} — Phân tích ngành</span>
-      <span>Trang 3 / 4</span>
-    </div>
+    <div class="pagefoot"><span>{brand_name} — Phân tích ngành</span><span>Trang 3 / 4</span></div>
   </div>
 </div>"""
 
@@ -359,13 +242,16 @@ def render_trailer_html(payload: dict, config: dict = None,
 <head>
 <meta charset="UTF-8">
 <title>ValuAI — Preview · {company_name}</title>
-{_FONTS}
-{_css(accent)}
+{FONTS}
+{build_styles(accent, theme, custom_css)}
 </head>
 <body>
+{build_theme_bar(theme, custom_css)}
+<div id="stage">
 {pg1}
 {pg2}
 {pg3}
 {pg4}
+</div>
 </body>
 </html>"""

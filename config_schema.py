@@ -49,6 +49,8 @@ DEFAULT_CONFIG: dict = {
             "explainer_layout": "A",
             "valuation_engine": "matplotlib",
             "trailer_engine": "html",
+            "html_theme": "A",
+            "custom_css": "",
         },
         "layout": {
             "content_axes": [0.07, 0.055, 0.86, 0.905],
