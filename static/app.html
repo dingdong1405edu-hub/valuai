@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ValuAI — Upload BCTC</title>
+<style>
+  :root {
+    --primary: #1e3a8a;
+    --secondary: #2563eb;
+    --accent: #10b981;
+    --light: #eff6ff;
+    --text: #1f2937;
+    --muted: #6b7280;
+    --border: #d1d5db;
+    --stripe: #f8fafc;
+    --error: #ef4444;
+    --warning: #f59e0b;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; color: var(--text); background: var(--stripe); min-height: 100vh; }
+  nav {
+    background: var(--primary);
+    color: white;
+    padding: 12px 32px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .logo { font-size: 20px; font-weight: 800; text-decoration: none; color: white; }
+  .nav-right { display: flex; align-items: center; gap: 16px; }
+  .nav-right a { color: rgba(255,255,255,.8); text-decoration: none; font-size: 14px; }
+  .main {
+    max-width: 800px;
+    margin: 40px auto;
+    padding: 0 20px;
+  }
+  .card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 1px 8px rgba(0,0,0,.08);
+    padding: 32px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 20px; color: var(--primary); margin-bottom: 20px; font-weight: 800; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+  input[type=text], input[type=url] {
+    width: 100%; padding: 10px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 8px;
+    font-size: 14px;
+    color: var(--text);
+    outline: none;
+    transition: border-color .2s;
+  }
+  input:focus { border-color: var(--secondary); }
+  .upload-zone {
+    border: 2px dashed var(--secondary);
+    border-radius: 12px;
+    padding: 40px;
+    text-align: center;
+    cursor: pointer;
+    background: var(--light);
+    transition: background .2s;
+    position: relative;
+  }
+  .upload-zone:hover { background: #dbeafe; }
+  .upload-zone.has-file { background: #ecfdf5; border-color: var(--accent); }
+  .upload-icon { font-size: 40px; margin-bottom: 10px; }
+  .upload-text { font-size: 15px; color: var(--muted); }
+  .upload-file-name { font-size: 14px; color: var(--accent); font-weight: 600; margin-top: 6px; }
+  #file-input { display: none; }
+  .form-group { margin-bottom: 18px; }
+  .btn {
+    display: inline-block;
+    padding: 12px 28px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    border: none;
+    transition: opacity .2s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+  .btn-primary { background: var(--secondary); color: white; width: 100%; }
+  .btn-accent { background: var(--accent); color: white; }
+  .btn-outline { background: transparent; color: var(--primary); border: 2px solid var(--primary); }
+  .status-box {
+    display: none;
+    background: var(--stripe);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    margin-top: 16px;
+  }
+  .status-box.visible { display: block; }
+  .status-title { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+  .status-detail { font-size: 13px; color: var(--muted); }
+  .progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    margin: 12px 0;
+    overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%;
+    background: var(--secondary);
+    border-radius: 3px;
+    transition: width .5s ease;
+    width: 0%;
+  }
+  .action-btns { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
+  .badge {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .badge-processing { background: #fef3c7; color: #92400e; }
+  .badge-ready { background: #d1fae5; color: #065f46; }
+  .badge-error { background: #fee2e2; color: #991b1b; }
+  .badge-paid { background: #dbeafe; color: #1e40af; }
+  .payment-box {
+    display: none;
+    border: 2px solid var(--secondary);
+    border-radius: 12px;
+    padding: 24px;
+    text-align: center;
+    margin-top: 16px;
+  }
+  .payment-box.visible { display: block; }
+  .payment-box h3 { color: var(--primary); margin-bottom: 12px; }
+  .payment-box .amount { font-size: 32px; font-weight: 800; color: var(--primary); margin: 8px 0; }
+  .package-select { display: flex; gap: 12px; justify-content: center; margin: 16px 0; }
+  .package-btn {
+    padding: 10px 20px;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    background: white;
+    transition: border-color .2s;
+  }
+  .package-btn.selected { border-color: var(--primary); background: var(--light); color: var(--primary); }
+  .history-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .history-table th { background: var(--primary); color: white; padding: 8px 12px; text-align: left; }
+  .history-table td { padding: 8px 12px; border-bottom: 1px solid var(--border); }
+  .history-table tr:nth-child(even) td { background: var(--stripe); }
+  .spinner {
+    display: inline-block;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,.4);
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+    vertical-align: middle;
+    margin-right: 6px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .alert {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-top: 12px;
+  }
+  .alert-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+  .alert-success { background: #d1fae5; color: #065f46; border: 1px solid #a7f3d0; }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="logo">ValuAI</a>
+  <div class="nav-right">
+    <a href="/">Trang chủ</a>
+    <span id="user-info" style="font-size:13px;color:rgba(255,255,255,.8);"></span>
+  </div>
+</nav>
+
+<div class="main">
+  <!-- Upload Form -->
+  <div class="card" id="upload-card">
+    <h2>Upload Báo cáo Tài chính</h2>
+
+    <div class="form-group">
+      <label>File BCTC (PDF hoặc ảnh)</label>
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <div class="upload-icon">📄</div>
+        <div class="upload-text">Click để chọn file hoặc kéo thả vào đây</div>
+        <div class="upload-file-name" id="file-name-display"></div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px;">PDF, PNG, JPG, WebP — tối đa 25MB</div>
+      </div>
+      <input type="file" id="file-input" accept=".pdf,.png,.jpg,.jpeg,.webp,.gif">
+    </div>
+
+    <div class="form-group">
+      <label>Website doanh nghiệp (tùy chọn)</label>
+      <input type="url" id="website-url" placeholder="https://example.com" />
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">Dùng để nhận diện thương hiệu và màu sắc báo cáo</div>
+    </div>
+
+    <button class="btn btn-primary" id="upload-btn" onclick="startProcess()">
+      Phân tích BCTC
+    </button>
+
+    <div class="alert alert-error" id="upload-error" style="display:none;"></div>
+  </div>
+
+  <!-- Status Box -->
+  <div class="card status-box" id="status-card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+      <div class="status-title" id="status-title">Đang xử lý...</div>
+      <span class="badge badge-processing" id="status-badge">Processing</span>
+    </div>
+    <div class="progress-bar"><div class="progress-fill" id="progress-fill"></div></div>
+    <div class="status-detail" id="status-detail">Đang khởi tạo pipeline AI...</div>
+
+    <div class="action-btns" id="action-btns" style="display:none;">
+      <button class="btn btn-outline" onclick="downloadTrailer()">📄 Xem Preview (Free)</button>
+      <button class="btn btn-accent" onclick="showPayment()">🔓 Mua báo cáo đầy đủ</button>
+    </div>
+  </div>
+
+  <!-- Payment Box -->
+  <div class="card payment-box" id="payment-card">
+    <h3>Thanh toán để nhận báo cáo đầy đủ</h3>
+    <div class="package-select">
+      <div class="package-btn selected" id="pkg-basic" onclick="selectPackage('basic')">
+        Basic — 3.000đ<br><small>PDF ~37 trang + Explainer</small>
+      </div>
+      <div class="package-btn" id="pkg-pro" onclick="selectPackage('pro')">
+        Pro — 5.000đ<br><small>PDF + Excel Model</small>
+      </div>
+    </div>
+    <div class="amount" id="payment-amount">3.000 VND</div>
+    <button class="btn btn-primary" style="max-width:300px;" onclick="createPayment()">
+      Thanh toán PayOS
+    </button>
+    <div id="qr-section" style="margin-top:16px;display:none;">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:8px;">Quét QR để thanh toán:</p>
+      <a id="checkout-link" href="#" target="_blank" class="btn btn-accent">Mở trang thanh toán PayOS</a>
+    </div>
+    <div class="alert alert-error" id="payment-error" style="display:none;"></div>
+  </div>
+
+  <!-- Success Box -->
+  <div class="card" id="success-card" style="display:none;">
+    <h2 style="color:var(--accent);">✅ Báo cáo đã sẵn sàng!</h2>
+    <div class="action-btns">
+      <button class="btn btn-primary" onclick="downloadValuation()">📊 Tải báo cáo định giá (PDF)</button>
+      <button class="btn btn-outline" onclick="downloadExplainer()">📖 Tải Explainer PDF</button>
+      <button class="btn btn-outline" id="dl-excel-btn" onclick="downloadExcel()" style="display:none;">📈 Tải Excel Model</button>
+    </div>
+  </div>
+</div>
+
+<script>
+let currentJobId = null;
+let selectedPackage = 'basic';
+let pollInterval = null;
+let pollCount = 0;
+
+const SESSION_ID = localStorage.getItem('session_id') || crypto.randomUUID();
+localStorage.setItem('session_id', SESSION_ID);
+
+// Check URL params
+const urlParams = new URLSearchParams(window.location.search);
+if (urlParams.get('job_id')) {
+  currentJobId = urlParams.get('job_id');
+  if (urlParams.get('paid')) {
+    showStatus();
+    startPolling();
+  }
+}
+
+document.getElementById('file-input').addEventListener('change', function(e) {
+  const file = e.target.files[0];
+  if (file) {
+    document.getElementById('file-name-display').textContent = file.name;
+    document.getElementById('upload-zone').classList.add('has-file');
+  }
+});
+
+document.getElementById('upload-zone').addEventListener('dragover', e => {
+  e.preventDefault();
+  e.currentTarget.style.background = '#dbeafe';
+});
+document.getElementById('upload-zone').addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) {
+    document.getElementById('file-input').files = e.dataTransfer.files;
+    document.getElementById('file-name-display').textContent = file.name;
+    document.getElementById('upload-zone').classList.add('has-file');
+    e.currentTarget.style.background = '';
+  }
+});
+
+function showError(msg, id='upload-error') {
+  const el = document.getElementById(id);
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+function hideError(id='upload-error') {
+  document.getElementById(id).style.display = 'none';
+}
+
+async function startProcess() {
+  const fileInput = document.getElementById('file-input');
+  if (!fileInput.files[0]) { showError('Vui lòng chọn file BCTC'); return; }
+  hideError();
+
+  const btn = document.getElementById('upload-btn');
+  btn.innerHTML = '<span class="spinner"></span>Đang upload...';
+  btn.disabled = true;
+
+  const fd = new FormData();
+  fd.append('file', fileInput.files[0]);
+  fd.append('website_url', document.getElementById('website-url').value);
+  fd.append('session_id', SESSION_ID);
+
+  try {
+    const resp = await fetch('/api/process', { method: 'POST', body: fd });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Upload thất bại');
+
+    currentJobId = data.job_id;
+    showStatus();
+    startPolling();
+  } catch (err) {
+    showError(err.message);
+    btn.innerHTML = 'Phân tích BCTC';
+    btn.disabled = false;
+  }
+}
+
+function showStatus() {
+  document.getElementById('status-card').classList.add('visible');
+  setProgress(5, 'Đang khởi tạo AI pipeline...');
+}
+
+function setProgress(pct, msg) {
+  document.getElementById('progress-fill').style.width = pct + '%';
+  document.getElementById('status-detail').textContent = msg;
+}
+
+function startPolling() {
+  if (pollInterval) clearInterval(pollInterval);
+  pollCount = 0;
+  pollInterval = setInterval(pollStatus, 4000);
+  pollStatus();
+}
+
+async function pollStatus() {
+  if (!currentJobId) return;
+  pollCount++;
+
+  try {
+    const resp = await fetch(`/api/job/status/${currentJobId}`);
+    const data = await resp.json();
+    const status = data.status;
+
+    const badge = document.getElementById('status-badge');
+    const title = document.getElementById('status-title');
+    const actionBtns = document.getElementById('action-btns');
+
+    if (status === 'processing') {
+      const pct = Math.min(15 + pollCount * 5, 60);
+      const msgs = [
+        'Agent 0+1: Đang trích xuất BCTC và thương hiệu...',
+        'Agent 2+4: Đang phân tích ngành và tỷ số tài chính...',
+        'Agent 3: Đang phân tích mô hình kinh doanh...',
+        'Đang render trailer PDF...',
+      ];
+      setProgress(pct, msgs[Math.min(pollCount - 1, msgs.length - 1)]);
+      badge.textContent = 'Đang xử lý';
+      badge.className = 'badge badge-processing';
+    } else if (status === 'trailer_ready') {
+      clearInterval(pollInterval);
+      setProgress(100, `Hoàn thành! Công ty: ${data.company_name || 'N/A'}`);
+      title.textContent = 'Preview sẵn sàng';
+      badge.textContent = 'Sẵn sàng';
+      badge.className = 'badge badge-ready';
+      actionBtns.style.display = 'flex';
+    } else if (status === 'paid_processing') {
+      const pct = Math.min(65 + pollCount * 4, 95);
+      const msgs2 = [
+        'Agent 5: Đang dự phóng tài chính 5 năm...',
+        'Agent 6: Đang tính định giá DCF + Multiples...',
+        'Agent 7: Đang viết investment thesis...',
+        'Agent 8: Đang render báo cáo PDF...',
+      ];
+      setProgress(pct, msgs2[Math.min(pollCount - 1, msgs2.length - 1)]);
+      badge.textContent = 'Đang tạo báo cáo';
+      badge.className = 'badge badge-paid';
+    } else if (status === 'success') {
+      clearInterval(pollInterval);
+      setProgress(100, 'Báo cáo đầy đủ đã sẵn sàng!');
+      title.textContent = 'Hoàn thành!';
+      badge.textContent = 'Hoàn thành';
+      badge.className = 'badge badge-ready';
+      document.getElementById('success-card').style.display = 'block';
+      checkPackageForExcel();
+    } else if (status === 'error') {
+      clearInterval(pollInterval);
+      setProgress(0, data.error || 'Có lỗi xảy ra');
+      title.textContent = 'Lỗi xử lý';
+      badge.textContent = 'Lỗi';
+      badge.className = 'badge badge-error';
+    }
+  } catch (e) {
+    console.error('Poll error:', e);
+  }
+}
+
+async function checkPackageForExcel() {
+  try {
+    const resp = await fetch(`/api/payment/status/${currentJobId}`);
+    const data = await resp.json();
+    if (data.package === 'pro') {
+      document.getElementById('dl-excel-btn').style.display = 'inline-block';
+    }
+  } catch(e) {}
+}
+
+function downloadTrailer() {
+  if (!currentJobId) return;
+  window.open(`/api/download/${currentJobId}/trailer`, '_blank');
+}
+function downloadValuation() {
+  if (!currentJobId) return;
+  window.open(`/api/download/${currentJobId}/valuation`, '_blank');
+}
+function downloadExplainer() {
+  if (!currentJobId) return;
+  window.open(`/api/download/${currentJobId}/explainer`, '_blank');
+}
+function downloadExcel() {
+  if (!currentJobId) return;
+  window.open(`/api/download/${currentJobId}/excel`, '_blank');
+}
+
+function showPayment() {
+  document.getElementById('payment-card').classList.add('visible');
+}
+
+function selectPackage(pkg) {
+  selectedPackage = pkg;
+  document.getElementById('pkg-basic').className = 'package-btn' + (pkg === 'basic' ? ' selected' : '');
+  document.getElementById('pkg-pro').className = 'package-btn' + (pkg === 'pro' ? ' selected' : '');
+  document.getElementById('payment-amount').textContent = pkg === 'pro' ? '5.000 VND' : '3.000 VND';
+}
+
+async function createPayment() {
+  if (!currentJobId) return;
+  document.getElementById('payment-error').style.display = 'none';
+
+  try {
+    const resp = await fetch('/api/payment/create', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ job_id: currentJobId, package: selectedPackage }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.detail || 'Tạo thanh toán thất bại');
+
+    const qrSection = document.getElementById('qr-section');
+    qrSection.style.display = 'block';
+
+    const link = document.getElementById('checkout-link');
+    link.href = data.checkout_url || '#';
+    link.textContent = 'Mở trang thanh toán PayOS';
+
+    if (data.checkout_url) window.open(data.checkout_url, '_blank');
+    startPolling();
+  } catch (err) {
+    showError(err.message, 'payment-error');
+  }
+}
+</script>
+</body>
+</html>

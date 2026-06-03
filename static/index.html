@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ValuAI — Định giá doanh nghiệp SME</title>
+<style>
+  :root {
+    --primary: #1e3a8a;
+    --secondary: #2563eb;
+    --accent: #10b981;
+    --light: #eff6ff;
+    --text: #1f2937;
+    --muted: #6b7280;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Inter, system-ui, sans-serif; color: var(--text); background: white; }
+  nav {
+    background: var(--primary);
+    color: white;
+    padding: 14px 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .logo { font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }
+  .nav-links a {
+    color: rgba(255,255,255,.8);
+    text-decoration: none;
+    margin-left: 24px;
+    font-size: 14px;
+  }
+  .nav-links a:hover { color: white; }
+  .hero {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    color: white;
+    padding: 80px 40px;
+    text-align: center;
+  }
+  .hero h1 { font-size: 42px; font-weight: 800; margin-bottom: 16px; line-height: 1.2; }
+  .hero p { font-size: 18px; opacity: .85; max-width: 600px; margin: 0 auto 32px; }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    padding: 14px 32px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: 700;
+    display: inline-block;
+    transition: opacity .2s;
+  }
+  .btn-primary:hover { opacity: .9; }
+  .btn-secondary {
+    background: transparent;
+    color: white;
+    border: 2px solid rgba(255,255,255,.5);
+    padding: 12px 28px;
+    border-radius: 8px;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: 600;
+    display: inline-block;
+    margin-left: 16px;
+    transition: border-color .2s;
+  }
+  .btn-secondary:hover { border-color: white; }
+  .features {
+    padding: 64px 40px;
+    max-width: 1100px;
+    margin: 0 auto;
+  }
+  .features h2 { text-align: center; font-size: 30px; color: var(--primary); margin-bottom: 40px; }
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+  }
+  .feature-card {
+    background: var(--light);
+    border-radius: 12px;
+    padding: 28px 24px;
+    border: 1px solid #dbeafe;
+  }
+  .feature-icon { font-size: 32px; margin-bottom: 12px; }
+  .feature-card h3 { font-size: 17px; color: var(--primary); margin-bottom: 8px; font-weight: 700; }
+  .feature-card p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .pipeline {
+    background: #f8fafc;
+    padding: 64px 40px;
+  }
+  .pipeline h2 { text-align: center; font-size: 30px; color: var(--primary); margin-bottom: 40px; }
+  .steps {
+    display: flex;
+    justify-content: center;
+    gap: 0;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  .step {
+    flex: 1;
+    text-align: center;
+    position: relative;
+    padding: 0 12px;
+  }
+  .step:not(:last-child)::after {
+    content: "→";
+    position: absolute;
+    right: -8px;
+    top: 20px;
+    font-size: 20px;
+    color: var(--secondary);
+  }
+  .step-num {
+    width: 40px;
+    height: 40px;
+    background: var(--primary);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 16px;
+    margin: 0 auto 10px;
+  }
+  .step h4 { font-size: 13px; color: var(--primary); font-weight: 700; margin-bottom: 4px; }
+  .step p { font-size: 11px; color: var(--muted); }
+  .pricing {
+    padding: 64px 40px;
+    max-width: 800px;
+    margin: 0 auto;
+    text-align: center;
+  }
+  .pricing h2 { font-size: 30px; color: var(--primary); margin-bottom: 40px; }
+  .price-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .price-card {
+    border: 2px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 28px 20px;
+  }
+  .price-card.featured {
+    border-color: var(--primary);
+    background: var(--light);
+  }
+  .price-card h3 { font-size: 18px; color: var(--primary); font-weight: 800; margin-bottom: 8px; }
+  .price-card .price { font-size: 28px; font-weight: 800; color: var(--text); margin: 12px 0; }
+  .price-card ul { list-style: none; text-align: left; margin: 16px 0; }
+  .price-card li { font-size: 13px; color: var(--muted); padding: 4px 0; }
+  .price-card li::before { content: "✓ "; color: var(--accent); }
+  footer {
+    background: var(--primary);
+    color: rgba(255,255,255,.7);
+    text-align: center;
+    padding: 24px;
+    font-size: 13px;
+  }
+  @media (max-width: 768px) {
+    .feature-grid, .price-grid { grid-template-columns: 1fr; }
+    .steps { flex-direction: column; gap: 20px; }
+    .step::after { display: none; }
+    nav { padding: 14px 20px; }
+    .hero { padding: 50px 20px; }
+    .hero h1 { font-size: 28px; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="logo">ValuAI</div>
+  <div class="nav-links">
+    <a href="#features">Tính năng</a>
+    <a href="#pricing">Bảng giá</a>
+    <a href="/app">Bắt đầu ngay</a>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1>Định giá doanh nghiệp SME<br>bằng AI trong vài phút</h1>
+  <p>Upload BCTC — AI phân tích 9 bước — Nhận báo cáo chuẩn sell-side equity research</p>
+  <a href="/app" class="btn-primary">Thử miễn phí</a>
+  <a href="#features" class="btn-secondary">Tìm hiểu thêm</a>
+</div>
+
+<div class="features" id="features">
+  <h2>Tại sao chọn ValuAI?</h2>
+  <div class="feature-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🤖</div>
+      <h3>9 AI Agent song song</h3>
+      <p>Pipeline Claude Opus tự động trích xuất BCTC, phân tích ngành, dự phóng tài chính và định giá theo chuẩn CFA.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📊</div>
+      <h3>Định giá đa phương pháp</h3>
+      <p>DCF + EV/EBITDA + P/E + P/B + Football Field + Sensitivity Analysis — toàn diện như báo cáo investment bank.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">📄</div>
+      <h3>Báo cáo PDF chuyên nghiệp</h3>
+      <p>~37 trang thiết kế thương hiệu, bao gồm Investment Thesis, Risk Matrix, Deal Recommendation và Exit Strategy.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🇻🇳</div>
+      <h3>Phù hợp thị trường Việt Nam</h3>
+      <p>WACC điều chỉnh country risk, comparable companies Việt Nam, đọc chuẩn số học BCTC Việt Nam.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <h3>Nhanh — dưới 5 phút</h3>
+      <p>Phase 1 (preview miễn phí) hoàn thành trong 3-5 phút. Phase 2 (báo cáo đầy đủ) thêm 5-10 phút.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>Bảo mật dữ liệu</h3>
+      <p>File BCTC bị xóa ngay sau khi xử lý. Dữ liệu tài chính chỉ lưu kết quả tổng hợp, không lưu file gốc.</p>
+    </div>
+  </div>
+</div>
+
+<div class="pipeline">
+  <h2>Quy trình 9 Agent</h2>
+  <div class="steps">
+    <div class="step">
+      <div class="step-num">0</div>
+      <h4>Brand Scraper</h4>
+      <p>Nhận diện thương hiệu</p>
+    </div>
+    <div class="step">
+      <div class="step-num">1</div>
+      <h4>Extractor</h4>
+      <p>Trích xuất BCTC</p>
+    </div>
+    <div class="step">
+      <div class="step-num">2</div>
+      <h4>Industry</h4>
+      <p>Phân tích ngành</p>
+    </div>
+    <div class="step">
+      <div class="step-num">3</div>
+      <h4>Business</h4>
+      <p>Tổng quan DN</p>
+    </div>
+    <div class="step">
+      <div class="step-num">4</div>
+      <h4>Analyzer</h4>
+      <p>Tỷ số tài chính</p>
+    </div>
+    <div class="step">
+      <div class="step-num">5</div>
+      <h4>Projector</h4>
+      <p>Dự phóng 5 năm</p>
+    </div>
+    <div class="step">
+      <div class="step-num">6</div>
+      <h4>Valuator</h4>
+      <p>DCF + Multiples</p>
+    </div>
+    <div class="step">
+      <div class="step-num">7</div>
+      <h4>Thesis Writer</h4>
+      <p>Báo cáo đầu tư</p>
+    </div>
+    <div class="step">
+      <div class="step-num">8</div>
+      <h4>Renderer</h4>
+      <p>Xuất PDF đẹp</p>
+    </div>
+  </div>
+</div>
+
+<div class="pricing" id="pricing">
+  <h2>Bảng giá</h2>
+  <div class="price-grid">
+    <div class="price-card">
+      <h3>Free Preview</h3>
+      <div class="price">Miễn phí</div>
+      <ul>
+        <li>4 trang preview PDF</li>
+        <li>Tỷ số tài chính cơ bản</li>
+        <li>Thông tin ngành tổng quan</li>
+        <li>Định giá ước tính (ẩn)</li>
+      </ul>
+    </div>
+    <div class="price-card featured">
+      <h3>Basic Report</h3>
+      <div class="price">3.000đ</div>
+      <ul>
+        <li>~37 trang báo cáo đầy đủ</li>
+        <li>DCF + Multiples + Football Field</li>
+        <li>Sensitivity & Scenario Analysis</li>
+        <li>Explainer PDF phương pháp</li>
+      </ul>
+    </div>
+    <div class="price-card">
+      <h3>Pro Report</h3>
+      <div class="price">5.000đ</div>
+      <ul>
+        <li>Tất cả Basic Report</li>
+        <li>Excel model đầy đủ</li>
+        <li>5 năm projection model</li>
+        <li>Sensitivity matrix Excel</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<footer>
+  <p>&copy; 2024 ValuAI — Nền tảng định giá SME Việt Nam bằng AI</p>
+</footer>
+
+</body>
+</html>

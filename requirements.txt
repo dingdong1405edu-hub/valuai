@@ -1,0 +1,15 @@
+fastapi
+uvicorn[standard]
+python-multipart
+openai
+asyncpg
+httpx
+pillow
+matplotlib
+playwright
+openpyxl
+python-jose[cryptography]
+passlib[bcrypt]
+beautifulsoup4
+numpy
+pypdf
