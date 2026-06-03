@@ -305,7 +305,7 @@ function PipelineDiagram({ valuation }: { valuation: Valuation }) {
             {finExtracted.profit    != null && <DataRow label="Net profit" value={`${finExtracted.profit} tỷ`} />}
             {finExtracted.ebitda    != null && <DataRow label="EBITDA"     value={`${finExtracted.ebitda} tỷ`} />}
             {finExtracted.employees != null && <DataRow label="Employees"  value={String(finExtracted.employees)} />}
-            {finExtracted.industry  && <DataRow label="Industry" value={String(finExtracted.industry)} />}
+            {finExtracted.industry  != null && <DataRow label="Industry" value={String(finExtracted.industry)} />}
             {qualFields.length > 0  && <DataRow label="Qualitative fields" value={`${qualFields.length} found`} />}
             {Object.keys(finExtracted).length === 0 && qualFields.length === 0 && (
               <div className="text-xs text-slate-400 italic">Data shown after valuation runs</div>
