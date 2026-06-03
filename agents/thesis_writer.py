@@ -1,7 +1,7 @@
 """Agent 7 — Thesis writer: all data → investment thesis report."""
 from datetime import date
 
-from agent_common import get_groq_client, parse_json_response, with_locked_schema
+from agent_common import call_opus, parse_json_response, with_locked_schema
 
 _SENTINEL = "TRẢ VỀ JSON đầy đủ (không markdown):"
 
@@ -156,17 +156,12 @@ CHI TIẾT DỮ LIỆU:
 
     full_prompt = f"{preamble}\n{context_data}\n\n{_SENTINEL}\n{_SCHEMA_BLOCK}"
 
-    client = get_groq_client()
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a Vietnamese sell-side equity research analyst. Always respond with valid JSON only."},
-            {"role": "user", "content": full_prompt}
-        ],
-        max_tokens=8000,
+    raw = call_opus(
+        full_prompt,
+        system="You are a Vietnamese sell-side equity research analyst. Always respond with valid JSON only.",
+        max_tokens=16000,
+        effort="high",
     )
-
-    raw = completion.choices[0].message.content or ""
     result = parse_json_response(raw)
 
     if "thesis" in result:

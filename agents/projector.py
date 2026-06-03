@@ -1,5 +1,5 @@
 """Agent 5 — Projector: financials + ratios + industry → 5-year projection."""
-from agent_common import build_prompt, get_groq_client, parse_json_response
+from agent_common import build_prompt, call_opus, parse_json_response
 
 _SCHEMA_BLOCK = """Return ONLY valid JSON:
 {
@@ -111,17 +111,12 @@ def project(financials: dict, ratios: dict, industry: dict,
 
     prompt = build_prompt(_DEFAULT_PREAMBLE, _SCHEMA_BLOCK, ctx, prompt_override)
 
-    client = get_groq_client()
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a Vietnamese financial modeling expert. Always respond with valid JSON only."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=8000,
+    raw = call_opus(
+        prompt,
+        system="You are a Vietnamese financial modeling expert. Always respond with valid JSON only.",
+        max_tokens=10000,
+        effort="high",
     )
-
-    raw = completion.choices[0].message.content or ""
     result = parse_json_response(raw)
 
     if "projection" in result:

@@ -9,7 +9,7 @@ from typing import Optional
 import httpx
 from bs4 import BeautifulSoup
 
-from agent_common import get_groq_client, parse_json_response, with_locked_schema
+from agent_common import call_haiku, parse_json_response, with_locked_schema
 
 _FALLBACK_BRAND = {
     "primary": "#1e3a8a",
@@ -146,16 +146,11 @@ def scrape_brand(website_url: str, prompt_override: str = "",
     )
 
     try:
-        client_ai = get_groq_client()
-        completion = client_ai.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {"role": "system", "content": "You are a brand design expert. Always respond with valid JSON only."},
-                {"role": "user", "content": prompt}
-            ],
+        raw = call_haiku(
+            prompt,
+            system="You are a brand design expert. Always respond with valid JSON only.",
             max_tokens=512,
         )
-        raw = completion.choices[0].message.content or ""
         parsed = parse_json_response(raw)
         colors = {
             "primary": parsed.get("primary", _FALLBACK_BRAND["primary"]),

@@ -1,5 +1,5 @@
 """Agent 2 — Industry analyzer: financials → industry analysis."""
-from agent_common import build_prompt, get_groq_client, parse_json_response
+from agent_common import build_prompt, call_opus, parse_json_response
 
 _SCHEMA_BLOCK = """Return ONLY valid JSON:
 {
@@ -85,17 +85,12 @@ def analyze_industry(financials: dict, prompt_override: str = "",
 
     prompt = build_prompt(_DEFAULT_PREAMBLE, _SCHEMA_BLOCK, ctx, prompt_override)
 
-    client = get_groq_client()
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a Vietnamese market and industry analysis expert. Always respond with valid JSON only."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=8000,
+    raw = call_opus(
+        prompt,
+        system="You are a Vietnamese market and industry analysis expert. Always respond with valid JSON only.",
+        max_tokens=10000,
+        effort="medium",
     )
-
-    raw = completion.choices[0].message.content or ""
     result = parse_json_response(raw)
 
     if "industry" in result:

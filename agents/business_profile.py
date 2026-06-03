@@ -1,5 +1,5 @@
 """Agent 3 — Business profile: financials + industry → business overview."""
-from agent_common import get_groq_client, parse_json_response, with_locked_schema
+from agent_common import call_opus, parse_json_response, with_locked_schema
 
 _SENTINEL = "TRẢ VỀ JSON (không markdown):"
 
@@ -103,17 +103,12 @@ def analyze_business(financials: dict, industry: dict,
     preamble = prompt_override.strip() if prompt_override and prompt_override.strip() else _DEFAULT_PREAMBLE.format(**ctx)
     full_prompt = f"{preamble}\n\n{_SENTINEL}\n{_SCHEMA_BLOCK}"
 
-    client = get_groq_client()
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a Vietnamese business analysis expert. Always respond with valid JSON only."},
-            {"role": "user", "content": full_prompt}
-        ],
-        max_tokens=6000,
+    raw = call_opus(
+        full_prompt,
+        system="You are a Vietnamese business analysis expert. Always respond with valid JSON only.",
+        max_tokens=8000,
+        effort="low",
     )
-
-    raw = completion.choices[0].message.content or ""
     result = parse_json_response(raw)
 
     if "business" in result:

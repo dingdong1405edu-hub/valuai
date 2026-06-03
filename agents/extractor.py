@@ -1,10 +1,10 @@
 """Agent 1 — Extractor: BCTC file → structured JSON financials."""
 import base64
 import io
-import json
 from pathlib import Path
 
-from agent_common import get_groq_client, parse_json_response, with_locked_schema
+from agent_common import (call_opus, call_opus_multimodal,
+                          parse_json_response, with_locked_schema)
 
 _SENTINEL = "Return ONLY this JSON shape"
 
@@ -105,6 +105,8 @@ _MIME_MAP = {
     ".gif": "image/gif",
 }
 
+_SYSTEM = "You are a Vietnamese financial analysis expert. Extract financial data from balance sheets (BCTC) accurately."
+
 
 def _extract_pdf_text(data: bytes) -> str:
     try:
@@ -133,47 +135,22 @@ def extract(file_path: str, prompt_override: str = "",
     preamble = prompt_override.strip() if prompt_override and prompt_override.strip() else _DEFAULT_PROMPT
     full_prompt = f"{preamble}\n\n{_SENTINEL}:\n{_SCHEMA_BLOCK}"
 
-    client = get_groq_client()
-
     if suffix == ".pdf":
         pdf_text = _extract_pdf_text(data)
-        messages = [
-            {
-                "role": "system",
-                "content": "You are a Vietnamese financial analysis expert. Extract financial data from balance sheets (BCTC) accurately."
-            },
-            {
-                "role": "user",
-                "content": f"{full_prompt}\n\nNỘI DUNG BÁO CÁO TÀI CHÍNH:\n{pdf_text}"
-            }
-        ]
-        completion = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=messages,
-            max_tokens=8000,
-        )
+        prompt = f"{full_prompt}\n\nNỘI DUNG BÁO CÁO TÀI CHÍNH:\n{pdf_text}"
+        raw = call_opus(prompt, system=_SYSTEM, max_tokens=16000, effort="medium")
     else:
         mime = _MIME_MAP.get(suffix, "image/jpeg")
         b64 = base64.standard_b64encode(data).decode("utf-8")
-        messages = [
+        content = [
             {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime};base64,{b64}"}
-                    },
-                    {"type": "text", "text": full_prompt}
-                ]
-            }
+                "type": "image",
+                "source": {"type": "base64", "media_type": mime, "data": b64},
+            },
+            {"type": "text", "text": full_prompt},
         ]
-        completion = client.chat.completions.create(
-            model="llama-3.2-11b-vision-preview",
-            messages=messages,
-            max_tokens=8000,
-        )
+        raw = call_opus_multimodal(content, system=_SYSTEM, max_tokens=16000, effort="medium")
 
-    raw = completion.choices[0].message.content or ""
     result = parse_json_response(raw)
 
     if "financials" in result:

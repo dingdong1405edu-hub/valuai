@@ -1,5 +1,5 @@
 """Agent 6 — Valuator: hybrid LLM assumptions + Python DCF/Multiples."""
-from agent_common import get_groq_client, parse_json_response, with_locked_schema
+from agent_common import call_opus, parse_json_response, with_locked_schema
 
 _SENTINEL = "TRẢ VỀ JSON (không markdown, chỉ assumptions):"
 
@@ -96,16 +96,12 @@ def _claude_assumptions(financials: dict, ratios: dict, industry: dict,
     preamble = prompt_override.strip() if prompt_override and prompt_override.strip() else _DEFAULT_PREAMBLE.format(**ctx)
     full_prompt = f"{preamble}\n\n{_SENTINEL}\n{_ASSUMPTIONS_SCHEMA}"
 
-    client = get_groq_client()
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": "You are a Vietnamese M&A valuation expert. Always respond with valid JSON only."},
-            {"role": "user", "content": full_prompt}
-        ],
-        max_tokens=4000,
+    raw = call_opus(
+        full_prompt,
+        system="You are a Vietnamese M&A valuation expert. Always respond with valid JSON only.",
+        max_tokens=8000,
+        effort="medium",
     )
-    raw = completion.choices[0].message.content or ""
     return parse_json_response(raw)
 
 
