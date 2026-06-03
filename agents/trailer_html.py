@@ -1,6 +1,6 @@
 """Trailer HTML renderer — 4-page free preview via Playwright."""
 import datetime
-from html_themes import FONTS, build_styles, build_theme_bar
+from html_themes import FONTS, STYLE_JS, build_styles, build_swatches
 
 
 def _fmt(v, d=0) -> str:
@@ -12,13 +12,13 @@ def _fmt(v, d=0) -> str:
         return str(v)
 
 
-def _yoy(cur, prev) -> str:
+def _growth(cur, prev) -> str:
     if cur is None or prev is None or prev == 0:
-        return ""
+        return "—"
     g = (cur - prev) / abs(prev) * 100
-    cls = "pos" if g >= 0 else "neg"
-    sign = "+" if g >= 0 else ""
-    return f'<span class="{cls}">{sign}{g:.1f}%</span>'
+    c = "#10b981" if g >= 0 else "#ef4444"
+    s = "+" if g >= 0 else ""
+    return f'<span style="color:{c};font-weight:700;">{s}{g:.1f}%</span>'
 
 
 def render_trailer_html(payload: dict, config: dict = None,
@@ -48,9 +48,25 @@ def render_trailer_html(payload: dict, config: dict = None,
 
     colors = config.get("style", {}).get("colors", {})
     accent = brand.get("accent") or colors.get("accent", "#b08d57")
-    report_css = config.get("style", {}).get("report_css", {})
-    theme = report_css.get("html_theme", "A")
-    custom_css = report_css.get("custom_css", "")
+    custom_css = config.get("style", {}).get("report_css", {}).get("custom_css", "")
+
+    # ── TOOLBAR ───────────────────────────────────────────────────
+    toolbar = f"""
+<div class="toolbar">
+  <div class="tb-brand">{brand_name}<b>Báo Cáo Định Giá</b></div>
+  <div class="tb-group">
+    <span class="tb-label">Màu</span>
+    {build_swatches(accent)}
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">Font</span>
+    <div class="ftoggle">
+      <button class="on" data-f="serif" onclick="setFont(this)">Serif</button>
+      <button data-f="sans" onclick="setFont(this)">Sans</button>
+    </div>
+  </div>
+  <div class="tb-group" style="font-family:var(--hand);font-size:14px;opacity:.7;">{company_name} &nbsp;·&nbsp; {today}</div>
+</div>"""
 
     # ── PAGE 1: COVER ─────────────────────────────────────────────
     pg1 = f"""
@@ -60,21 +76,21 @@ def render_trailer_html(payload: dict, config: dict = None,
   <div class="cov">
     <div class="top">
       <div class="logo"><i>V</i>{brand_name}</div>
-      <div class="kicker">Báo cáo Định giá &nbsp;·&nbsp; {today}</div>
+      <div class="kicker">Xem Trước Miễn Phí &nbsp;·&nbsp; {today}</div>
     </div>
     <div style="margin-top:auto;">
       <div class="ribbon"></div>
-      <div class="kicker">XEM TRƯỚC MIỄN PHÍ</div>
-      <h1>{company_name}</h1>
-      <div class="sub">Ngành: <b>{company_industry}</b></div>
+      <div class="kicker">BÁO CÁO ĐỊNH GIÁ DOANH NGHIỆP</div>
+      <h1>Xem Trước</h1>
+      <div class="company">{company_name}</div>
       <div class="intro">
-        Báo cáo định giá chuyên nghiệp được tạo bởi pipeline 9-agent AI.<br>
-        Kỳ báo cáo: <b>{period_cur}</b> &nbsp;·&nbsp; Đơn vị: {unit}.
+        Báo cáo định giá chuyên nghiệp tạo bởi pipeline 9-agent AI.
+        Kỳ báo cáo: <b>{period_cur}</b> · Đơn vị: {unit}.
       </div>
       <div class="lock-box">
         <div class="lbl">ĐỊNH GIÁ ƯỚC TÍNH — EQUITY VALUE</div>
         <div class="val">███████ – ███████</div>
-        <div class="note">Mua báo cáo đầy đủ để xem con số thực tế</div>
+        <div class="note-txt">Mua báo cáo đầy đủ để xem con số thực tế</div>
       </div>
     </div>
     <div class="foot">
@@ -84,14 +100,14 @@ def render_trailer_html(payload: dict, config: dict = None,
   </div>
 </div>"""
 
-    # ── PAGE 2: FINANCIAL SNAPSHOT (Direction B) ───────────────────
+    # ── PAGE 2: FINANCIAL SNAPSHOT — Direction B ───────────────────
     kpis = [
         ("Doanh thu thuần", "net_revenue",
          income_cur.get("net_revenue") or income_cur.get("revenue"),
          income_prev.get("net_revenue") or income_prev.get("revenue")),
         ("Lợi nhuận gộp", "gross_profit",
          income_cur.get("gross_profit"), income_prev.get("gross_profit")),
-        ("EBIT", "operating_profit",
+        ("EBIT (Lợi nhuận từ HĐKD)", "operating_profit",
          income_cur.get("operating_profit"), income_prev.get("operating_profit")),
         ("Lợi nhuận ròng (LNST)", "net_profit_after_tax",
          income_cur.get("net_profit_after_tax"), income_prev.get("net_profit_after_tax")),
@@ -102,18 +118,23 @@ def render_trailer_html(payload: dict, config: dict = None,
     ]
     bands_html = ""
     for label, key, cur, prev in kpis:
-        prev_cell = ""
-        yoy_cell = ""
+        cells = f"""<div class="cell">
+          <div class="lab">{period_cur}</div>
+          <div class="val">{_fmt(cur)} {unit}</div>
+        </div>"""
         if prev is not None:
-            prev_cell = f'<div class="cell"><div class="lab">{period_prev}</div><div class="val">{_fmt(prev)}</div></div>'
-            yoy_cell = f'<div class="cell"><div class="lab">YoY</div><div class="yoy">{_yoy(cur, prev) or "—"}</div></div>'
+            cells += f"""<div class="cell src">
+          <div class="lab">{period_prev}</div>
+          <div class="val">{_fmt(prev)} {unit}</div>
+        </div>
+        <div class="cell">
+          <div class="lab">Tăng trưởng YoY</div>
+          <div class="val">{_growth(cur, prev)}</div>
+        </div>"""
         bands_html += f"""
 <div class="band">
   <div class="left"><div class="nm">{label}</div><div class="fx">{key}</div></div>
-  <div class="right">
-    <div class="cell"><div class="lab">{period_cur}</div><div class="val">{_fmt(cur)}</div></div>
-    {prev_cell}{yoy_cell}
-  </div>
+  <div class="right">{cells}</div>
 </div>"""
 
     pg2 = f"""
@@ -125,49 +146,46 @@ def render_trailer_html(payload: dict, config: dict = None,
       <div class="b-htext">
         <h2>Snapshot Tài Chính</h2>
         <div class="en">Financial Snapshot</div>
-        <div class="d">Số liệu tài chính kỳ gần nhất &nbsp;·&nbsp; Đơn vị: {unit}</div>
+        <div class="d">Số liệu tài chính kỳ gần nhất · Đơn vị: {unit}</div>
       </div>
     </div>
     {bands_html}
-    <div class="pagefoot"><span>{brand_name} — Báo cáo tài chính</span><span>Trang 2 / 4</span></div>
+    <div class="pagefoot"><span>{brand_name} — Tài chính</span><span>Trang 2 / 4</span></div>
   </div>
 </div>"""
 
-    # ── PAGE 3: INDUSTRY + RATIOS (Direction A) ────────────────────
-    key_ratios = [
-        ("Biên lợi nhuận gộp", "gross_margin",
-         r.get("profitability", {}).get("gross_margin", {}), "%"),
-        ("Biên lợi nhuận ròng", "net_margin",
-         r.get("profitability", {}).get("net_margin", {}), "%"),
-        ("EBITDA Margin", "ebitda_margin",
-         r.get("profitability", {}).get("ebitda_margin", {}), "%"),
-        ("ROE", "roe",
-         r.get("profitability", {}).get("roe", {}), "%"),
-        ("ROA", "roa",
-         r.get("profitability", {}).get("roa", {}), "%"),
-        ("Current Ratio", "current_ratio",
-         r.get("liquidity", {}).get("current_ratio", {}), "x"),
-        ("Quick Ratio", "quick_ratio",
-         r.get("liquidity", {}).get("quick_ratio", {}), "x"),
-        ("Debt / Equity", "debt_to_equity",
-         r.get("leverage", {}).get("debt_to_equity", {}), "x"),
+    # ── PAGE 3: INDUSTRY + RATIOS — Direction A ────────────────────
+    ratio_defs = [
+        ("Biên lợi nhuận gộp", "GP / Revenue", r.get("profitability",{}).get("gross_margin",{}), "%"),
+        ("Biên lợi nhuận ròng", "LNST / Revenue", r.get("profitability",{}).get("net_margin",{}), "%"),
+        ("EBITDA Margin", "EBITDA / Revenue", r.get("profitability",{}).get("ebitda_margin",{}), "%"),
+        ("ROE", "LNST / Vốn chủ sở hữu", r.get("profitability",{}).get("roe",{}), "%"),
+        ("ROA", "LNST / Tổng tài sản", r.get("profitability",{}).get("roa",{}), "%"),
+        ("Current Ratio", "Tài sản ngắn hạn / Nợ ngắn hạn", r.get("liquidity",{}).get("current_ratio",{}), "x"),
+        ("Quick Ratio", "(TSNH - HTK) / Nợ ngắn hạn", r.get("liquidity",{}).get("quick_ratio",{}), "x"),
+        ("Debt / Equity", "Tổng nợ / Vốn chủ", r.get("leverage",{}).get("debt_to_equity",{}), "x"),
     ]
-    _rating_label = {"good": "Tốt ✓", "warning": "Chú ý ⚠", "poor": "Yếu ✗", "n/a": "—"}
+    _eval = {"good": ("Tốt", "color:#10b981;font-weight:700;"),
+             "warning": ("Chú ý", "color:#f59e0b;font-weight:700;"),
+             "poor": ("Yếu", "color:#ef4444;font-weight:700;"),
+             "n/a": ("—", "color:var(--ink-soft);")}
     ratio_rows = ""
-    for label, key, rd, suffix in key_ratios:
+    for label, formula, rd, suffix in ratio_defs:
         val = rd.get("value")
         rating = rd.get("rating", "n/a")
-        rating_cls = rating if rating in ("good", "warning", "poor") else "na"
+        eval_text, eval_style = _eval.get(rating, ("—", ""))
         val_str = (_fmt(val, 1) + suffix) if val is not None else "N/A"
         ratio_rows += f"""<tr>
-          <td class="nm">{label}</td>
-          <td class="v">{val_str}</td>
-          <td class="{rating_cls}">{_rating_label.get(rating, rating)}</td>
+          <td><span class="nm">{label}</span></td>
+          <td><span class="fx">{formula}</span></td>
+          <td class="sr">{val_str}</td>
+          <td class="mn"><span style="{eval_style}">{eval_text}</span></td>
         </tr>"""
 
     swot = ind.get("swot", {})
-    strengths = " · ".join((swot.get("strengths") or [])[:2])
-    outlook = (ind.get("industry_outlook_3y") or "N/A")[:70]
+    s1 = (swot.get("strengths") or [""])[0][:60]
+    o1 = (swot.get("opportunities") or [""])[0][:60]
+    outlook = (ind.get("industry_outlook_3y") or "")[:60]
 
     pg3 = f"""
 <div class="page">
@@ -176,38 +194,50 @@ def render_trailer_html(payload: dict, config: dict = None,
     <div class="a-head">
       <div class="a-eyebrow">03 &nbsp;·&nbsp; <b>NGÀNH &amp; TỶ SỐ</b></div>
       <div class="a-title">Phân Tích Ngành &amp; Tỷ Số Tài Chính</div>
-      <div class="a-en">Industry Analysis &amp; Key Ratios</div>
+      <div class="a-en">Industry Analysis &amp; Financial Ratios</div>
+      <div class="a-desc">{ind.get("industry_name","N/A")} — CAGR {ind.get("industry_cagr_5y_pct","N/A")}%/năm · {outlook}</div>
     </div>
-    <div class="ind-box">
-      <div class="nm">{ind.get("industry_name", "N/A")}</div>
-      <div class="ov">{(ind.get("industry_overview") or "")[:280]}</div>
-      <div class="meta">
-        <span>CAGR 5 năm: <b>{ind.get("industry_cagr_5y_pct", "N/A")}%</b></span>
-        <span>Triển vọng: <b>{outlook}</b></span>
-        <span>Điểm mạnh: <b>{strengths[:80] or "N/A"}</b></span>
-      </div>
+    <div class="legend">
+      <i>Tốt</i><i class="src">Giá trị</i><i class="mean">Đánh giá</i>
     </div>
     <table class="ledger">
-      <thead><tr><th>Chỉ số tài chính</th><th>Giá trị</th><th>Đánh giá</th></tr></thead>
+      <colgroup><col class="c-name"><col class="c-f"><col class="c-s"><col class="c-m"></colgroup>
+      <thead><tr><th>Chỉ số</th><th>Công thức</th><th>Giá trị</th><th>Đánh giá</th></tr></thead>
       <tbody>{ratio_rows}</tbody>
     </table>
-    <div class="pagefoot"><span>{brand_name} — Phân tích ngành</span><span>Trang 3 / 4</span></div>
+    <div style="margin-top:auto;padding:14px 0;border-top:1px solid var(--line-soft);font-size:11.5px;color:var(--ink-soft);line-height:1.7;">
+      <b style="color:var(--ink);">Điểm mạnh:</b> {s1} &nbsp;·&nbsp; <b style="color:var(--ink);">Cơ hội:</b> {o1}
+    </div>
+    <div class="pagefoot"><span>{brand_name} — Ngành &amp; Tỷ số</span><span>Trang 3 / 4</span></div>
   </div>
 </div>"""
 
-    # ── PAGE 4: CTA (Direction C) ──────────────────────────────────
-    cta_items = [
-        ("📊", "Báo cáo định giá ~37 trang", "DCF, Multiples, Football Field, Waterfall Bridge"),
-        ("📈", "Dự phóng tài chính 5 năm", "Mô hình FCFF đầy đủ, giả định chi tiết"),
-        ("🎯", "Investment Thesis & Risk Matrix", "Phân tích sell-side chuyên nghiệp"),
-        ("💼", "Deal Recommendation & Exit", "Cấu trúc giao dịch và chiến lược thoát vốn"),
-        ("📋", "Sensitivity & Scenario Analysis", "Ma trận WACC × growth, Bull/Base/Bear"),
-        ("📄", "Explainer PDF + Excel (Pro)", "Giải thích phương pháp + file Excel đầy đủ"),
+    # ── PAGE 4: CTA — Direction C ──────────────────────────────────
+    cta = [
+        ("Báo cáo định giá ~37 trang", "full_report_pdf",
+         "DCF, Multiples, Football Field, Waterfall", "PDF chuyên nghiệp chuẩn sell-side"),
+        ("Dự phóng tài chính 5 năm", "projection_5y",
+         "Mô hình FCFF, giả định tăng trưởng", "S-curve revenue · EBITDA margin"),
+        ("Investment Thesis & Risk Matrix", "thesis_risk",
+         "Luận điểm đầu tư, rủi ro định lượng", "Bull / Base / Bear scenarios"),
+        ("Deal Recommendation & Exit", "deal_exit",
+         "Cấu trúc giao dịch M&A", "IRR · MOIC · Timeline"),
+        ("Sensitivity Analysis", "sensitivity",
+         "Ma trận WACC × terminal growth 5×5", "Kịch bản nhạy cảm tham số"),
+        ("Explainer PDF + Excel (Pro)", "explainer_excel",
+         "Giải thích phương pháp + Excel model", "openpyxl · formatted"),
     ]
-    cta_rows = "".join(f"""<div class="cta-row">
-      <div class="ico">{ico}</div>
-      <div class="txt"><div class="nm">{nm}</div><div class="d">{d}</div></div>
-    </div>""" for ico, nm, d in cta_items)
+    metrics_html = ""
+    for nm, fx, tx1, tx2 in cta:
+        metrics_html += f"""
+<div class="c-metric">
+  <div class="nm">{nm}</div>
+  <span class="fx">{fx}</span>
+  <div class="grid2">
+    <div><div class="lab">Nội dung</div><div class="tx">{tx1}</div></div>
+    <div><div class="lab s">Chi tiết</div><div class="tx s">{tx2}</div></div>
+  </div>
+</div>"""
 
     pg4 = f"""
 <div class="page">
@@ -219,18 +249,15 @@ def render_trailer_html(payload: dict, config: dict = None,
       <h2>Mở Khóa Báo Cáo Đầy Đủ</h2>
       <div class="en">Unlock Full Report</div>
       <div class="d">
-        Báo cáo định giá chuyên nghiệp ~37 trang được tạo bởi pipeline 9-agent AI.
+        Báo cáo định giá chuyên nghiệp ~37 trang, tạo bởi pipeline 9-agent AI.
         Phân tích ngành, dự phóng 5 năm, DCF &amp; Multiples đầy đủ.
       </div>
-      <div class="sidefoot">{brand_name}<br>Định giá SME Việt Nam</div>
+      <div class="sidefoot">{brand_name} &mdash; Định giá SME Việt Nam<br>Thanh toán qua PayOS</div>
     </div>
     <div class="c-main">
-      <div style="font-family:var(--head);font-size:17px;font-weight:700;margin-bottom:18px;color:var(--ink);">
-        Báo cáo đầy đủ bao gồm:
-      </div>
-      <div class="cta-list">{cta_rows}</div>
+      {metrics_html}
       <div class="c-mainfoot">
-        <span>Thanh toán qua PayOS — An toàn &amp; bảo mật</span>
+        <span>PayOS &mdash; An toàn &amp; bảo mật</span>
         <span>{today}</span>
       </div>
     </div>
@@ -243,15 +270,16 @@ def render_trailer_html(payload: dict, config: dict = None,
 <meta charset="UTF-8">
 <title>ValuAI — Preview · {company_name}</title>
 {FONTS}
-{build_styles(accent, theme, custom_css)}
+{build_styles(accent, custom_css)}
 </head>
 <body>
-{build_theme_bar(theme, custom_css)}
+{toolbar}
 <div id="stage">
 {pg1}
 {pg2}
 {pg3}
 {pg4}
 </div>
+{STYLE_JS}
 </body>
 </html>"""

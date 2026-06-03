@@ -1,6 +1,6 @@
 """Full valuation HTML report — admin preview only."""
 import datetime
-from html_themes import FONTS, build_styles, build_theme_bar, THEME_CSS, THEME_META, _js_esc
+from html_themes import FONTS, STYLE_JS, build_styles, build_swatches
 
 
 def _fmt(v, d=0) -> str:
@@ -12,45 +12,12 @@ def _fmt(v, d=0) -> str:
         return str(v)
 
 
-def _yoy(cur, prev) -> str:
+def _growth(cur, prev) -> str:
     if cur is None or prev is None or prev == 0:
-        return ""
+        return "—"
     g = (cur - prev) / abs(prev) * 100
-    cls = "pos" if g >= 0 else "neg"
-    sign = "+" if g >= 0 else ""
-    return f'<span class="{cls}">{sign}{g:.1f}%</span>'
-
-
-_ADMIN_TOOLBAR_CSS = """\
-<style>
-.toolbar{
-  position:sticky;top:0;z-index:50;background:#14182099;
-  backdrop-filter:blur(10px);border-bottom:1px solid #00000033;
-  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
-  padding:12px 24px;color:#fff;
-}
-.tb-brand{font-family:var(--hand);font-size:18px;letter-spacing:.3px;opacity:.95;}
-.tb-brand b{display:block;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;}
-.tabs{display:flex;gap:8px;}
-.tab{
-  font-family:var(--hand);font-size:16px;color:#fff;background:transparent;
-  border:1.5px solid #ffffff40;border-radius:7px;padding:6px 16px;cursor:pointer;
-  transition:.15s;line-height:1.1;
-}
-.tab small{display:block;font-family:var(--sans);font-size:9px;letter-spacing:1px;text-transform:uppercase;opacity:.55;font-weight:600;}
-.tab:hover{border-color:#ffffff90;}
-.tab.active{background:#fff;color:var(--ink);border-color:#fff;}
-.tab.active small{opacity:.5;}
-.tb-group{display:flex;align-items:center;gap:9px;margin-left:auto;font-size:11px;color:#fff;font-family:var(--hand);}
-.note{padding:10px 24px;color:#fff;font-family:var(--hand);font-size:14px;opacity:.9;display:flex;gap:8px;align-items:center;}
-.note span{font-family:var(--sans);font-size:10px;letter-spacing:1px;text-transform:uppercase;background:#ffffff22;padding:2px 8px;border-radius:20px;font-weight:600;}
-.pg-section{display:none;}
-.pg-section.active{display:flex;flex-direction:column;align-items:center;gap:34px;}
-@media print{
-  .toolbar,.note,.theme-bar{display:none!important;}
-  .pg-section{display:flex!important;flex-direction:column;align-items:center;gap:0;}
-}
-</style>"""
+    c = "#10b981" if g >= 0 else "#ef4444"
+    return f'<span style="color:{c};font-weight:700;">{"+" if g>=0 else ""}{g:.1f}%</span>'
 
 
 def render_valuation_html(payload: dict, config: dict = None,
@@ -60,9 +27,7 @@ def render_valuation_html(payload: dict, config: dict = None,
     content = config.get("content", {})
     colors = config.get("style", {}).get("colors", {})
     accent = brand.get("accent") or colors.get("accent", "#b08d57")
-    report_css = config.get("style", {}).get("report_css", {})
-    theme = report_css.get("html_theme", "A")
-    custom_css = report_css.get("custom_css", "")
+    custom_css = config.get("style", {}).get("report_css", {}).get("custom_css", "")
 
     financials = payload.get("financials", {})
     company = financials.get("company", {})
@@ -72,6 +37,7 @@ def render_valuation_html(payload: dict, config: dict = None,
     vd = val.get("valuation", val) if "valuation" in val else val
     summary = vd.get("summary", {})
     income_cur = financials.get("income_statement", {}).get("current", {})
+    income_prev = financials.get("income_statement", {}).get("previous", {})
     bs_cur = (financials.get("balance_sheet", {}).get("current") or {})
     proj_data = payload.get("projection", {})
     proj = proj_data.get("projection", proj_data) if isinstance(proj_data, dict) else {}
@@ -79,14 +45,47 @@ def render_valuation_html(payload: dict, config: dict = None,
     es = thesis.get("executive_summary", {})
     industry = payload.get("industry", {})
     ind = industry.get("industry", industry) if isinstance(industry, dict) else {}
+    period_cur = financials.get("period", {}).get("current", {}).get("label", "Hiện tại")
+    period_prev = financials.get("period", {}).get("previous", {}).get("label", "Kỳ trước")
     today = datetime.date.today().strftime("%d/%m/%Y")
     year = datetime.date.today().year
-
     company_name = company.get("name", "N/A")
     recommendation = es.get("recommendation", "N/A")
     rec_color = {"BUY": "#10b981", "HOLD": "#f59e0b", "SELL": "#ef4444"}.get(recommendation, "var(--accent)")
 
-    # ── PAGE: COVER (Cover layout) ────────────────────────────────
+    # ── TOOLBAR (tabs + swatches + ftoggle) ───────────────────────
+    toolbar = f"""
+<div class="toolbar">
+  <div class="tb-brand">ValuAI<b>Admin Preview</b></div>
+  <div class="tabs">
+    <button class="tab active" onclick="showSec('exec')">Executive<small>Cover + Summary</small></button>
+    <button class="tab" onclick="showSec('val')">Định giá<small>Valuation</small></button>
+    <button class="tab" onclick="showSec('proj')">Dự phóng<small>5Y Projection</small></button>
+    <button class="tab" onclick="showSec('deal')">Deal<small>Recommendation</small></button>
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">Màu</span>
+    {build_swatches(accent)}
+  </div>
+  <div class="tb-group">
+    <span class="tb-label">Font</span>
+    <div class="ftoggle">
+      <button class="on" data-f="serif" onclick="setFont(this)">Serif</button>
+      <button data-f="sans" onclick="setFont(this)">Sans</button>
+    </div>
+  </div>
+</div>
+<div class="note">
+  <span>Admin</span> Preview nội bộ — Không phải báo cáo cuối cùng · {company_name} · {today}
+</div>"""
+
+    # ── COVER PAGE ────────────────────────────────────────────────
+    wacc = _fmt(vd.get("assumptions", {}).get("wacc_pct"), 1)
+    tg = _fmt(vd.get("assumptions", {}).get("terminal_growth_pct"), 1)
+    fv_low = _fmt(summary.get("fair_value_low"))
+    fv_mid = _fmt(summary.get("fair_value_mid"))
+    fv_high = _fmt(summary.get("fair_value_high"))
+
     page_cover = f"""
 <div class="page">
   <div class="wm">ADMIN</div>
@@ -99,96 +98,105 @@ def render_valuation_html(payload: dict, config: dict = None,
     <div style="margin-top:auto;">
       <div class="ribbon"></div>
       <div class="kicker">BÁO CÁO ĐỊNH GIÁ DOANH NGHIỆP</div>
-      <h1>{company_name}</h1>
+      <h1>Báo Cáo Định Giá</h1>
+      <div class="company">{company_name}</div>
       <div class="sub">Ngành: <b>{ind.get("industry_name", company.get("industry","N/A"))}</b></div>
       <div class="intro">{es.get("headline","")}</div>
     </div>
     <div class="foot">
-      <span style="font-style:italic;">{content.get("disclaimer_default","")[:120]}</span>
+      <span class="disc">{content.get("disclaimer_default","")[:120]}</span>
       <span>ValuAI © {year}</span>
     </div>
   </div>
 </div>"""
 
-    # ── PAGE: EXECUTIVE SUMMARY (Direction A — Ledger) ────────────
-    fv_low = _fmt(summary.get("fair_value_low"))
-    fv_mid = _fmt(summary.get("fair_value_mid"))
-    fv_high = _fmt(summary.get("fair_value_high"))
-    wacc = _fmt(vd.get("assumptions", {}).get("wacc_pct"), 1)
-    tg = _fmt(vd.get("assumptions", {}).get("terminal_growth_pct"), 1)
-
-    kpi_strip = f"""
-<div class="kpi-strip">
-  <div class="kpi-card hl">
-    <div class="lbl">Fair Value Mid</div>
-    <div class="val">{fv_mid}</div>
-    <div class="sub">{unit}</div>
+    # ── EXECUTIVE SUMMARY — Direction B ───────────────────────────
+    # KPI bands for key valuation outputs
+    kpi_bands = f"""
+<div class="band">
+  <div class="left"><div class="nm">Fair Value (Equity)</div><div class="fx">fair_value_summary</div></div>
+  <div class="right">
+    <div class="cell"><div class="lab">Mid</div><div class="val">{fv_mid} {unit}</div></div>
+    <div class="cell src"><div class="lab">Range</div><div class="val">{fv_low} – {fv_high} {unit}</div></div>
+    <div class="cell"><div class="lab">Khuyến nghị</div><div class="val" style="color:{rec_color};font-weight:700;">{recommendation}</div></div>
   </div>
-  <div class="kpi-card">
-    <div class="lbl">Fair Value Range</div>
-    <div class="val" style="font-size:16px;">{fv_low} – {fv_high}</div>
-    <div class="sub">{unit}</div>
-  </div>
-  <div class="kpi-card">
-    <div class="lbl">Khuyến nghị</div>
-    <div class="val" style="color:{rec_color};">{recommendation}</div>
-    <div class="sub">WACC {wacc}% · g {tg}%</div>
+</div>
+<div class="band">
+  <div class="left"><div class="nm">Tham số định giá</div><div class="fx">valuation_parameters</div></div>
+  <div class="right">
+    <div class="cell"><div class="lab">WACC</div><div class="val">{wacc}%</div></div>
+    <div class="cell src"><div class="lab">Terminal Growth</div><div class="val">{tg}%</div></div>
+    <div class="cell"><div class="lab">DCF Equity Value</div><div class="val">{_fmt(vd.get("dcf",{}).get("equity_value"))} {unit}</div></div>
   </div>
 </div>"""
 
+    # Key value drivers in ledger
     kvd_rows = "".join(f"""<tr>
-      <td style="text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700;width:6%;">{d.get("rank","")}</td>
-      <td class="nm" style="width:30%;">{d.get("driver","")}</td>
-      <td style="font-size:11px;color:var(--ink-soft);">{d.get("rationale","")[:120]}</td>
-    </tr>""" for d in thesis.get("key_value_drivers_ranked", [])[:6])
+      <td><span class="nm">{d.get("rank","")}.&nbsp;{d.get("driver","")}</span></td>
+      <td><span class="fx">driver_{d.get("rank","")}</span></td>
+      <td class="sr">&nbsp;</td>
+      <td class="mn">{d.get("rationale","")[:80]}</td>
+    </tr>""" for d in thesis.get("key_value_drivers_ranked", [])[:5])
 
     page_exec = f"""
 <div class="page">
   <div class="page-tag">Exec</div>
   <div class="sec">
-    <div class="a-head">
-      <div class="a-eyebrow">01 &nbsp;·&nbsp; <b>EXECUTIVE SUMMARY</b></div>
-      <div class="a-title">Tóm Tắt Điều Hành</div>
-      <div class="a-en">Executive Summary · {unit}</div>
+    <div class="b-head">
+      <div class="b-num">01</div>
+      <div class="b-htext">
+        <h2>Executive Summary</h2>
+        <div class="en">Tóm tắt điều hành</div>
+        <div class="d">Đơn vị: {unit} &nbsp;·&nbsp; {period_cur}</div>
+      </div>
     </div>
-    {kpi_strip}
+    {kpi_bands}
+    <div class="a-head" style="margin-top:18px;">
+      <div class="a-eyebrow"><b>KEY VALUE DRIVERS</b></div>
+      <div class="a-desc">{es.get("investment_thesis","") or thesis.get("investment_case_summary","")[:200]}</div>
+    </div>
     <table class="ledger">
-      <colgroup><col style="width:6%"><col style="width:30%"><col></colgroup>
-      <thead><tr><th>#</th><th>Key Value Driver</th><th>Rationale</th></tr></thead>
+      <colgroup><col class="c-name"><col class="c-f"><col class="c-s"><col class="c-m"></colgroup>
+      <thead><tr><th>Driver</th><th>Key</th><th>&nbsp;</th><th>Rationale</th></tr></thead>
       <tbody>{kvd_rows}</tbody>
     </table>
-    <div class="divider"></div>
-    <div style="font-size:12px;color:var(--ink-soft);line-height:1.75;">{es.get("investment_thesis","") or thesis.get("investment_case_summary","")[:500]}</div>
     <div class="pagefoot"><span>ValuAI Admin Preview — Executive Summary</span><span>Trang 1</span></div>
   </div>
 </div>"""
 
-    # ── PAGE: VALUATION (Direction A — Ledger) ────────────────────
+    # ── VALUATION — Direction A (Ledger) ──────────────────────────
     ff = vd.get("football_field", [])
     ff_rows = "".join(f"""<tr>
-      <td class="nm">{row.get("method","")}</td>
-      <td class="v">{_fmt(row.get("low"))}</td>
-      <td class="v accent">{_fmt(row.get("mid"))}</td>
-      <td class="v">{_fmt(row.get("high"))}</td>
+      <td><span class="nm">{row.get("method","")}</span></td>
+      <td><span class="fx">{row.get("method","").lower().replace("/","_").replace(" ","_")}</span></td>
+      <td class="sr">{_fmt(row.get("low"))} – {_fmt(row.get("high"))}</td>
+      <td class="mn"><b>{_fmt(row.get("mid"))}</b> {unit}</td>
     </tr>""" for row in ff)
 
     sc = vd.get("scenarios", {})
     sc_rows = "".join(f"""<tr>
-      <td class="nm">{label}</td>
-      <td class="v">{_fmt(data.get("equity_value"))}</td>
-      <td style="font-size:10px;color:var(--ink-soft);">{data.get("description","")[:70]}</td>
-    </tr>""" for label, data in [("Bull 🐂", sc.get("bull",{})), ("Base", sc.get("base",{})), ("Bear 🐻", sc.get("bear",{}))])
+      <td><span class="nm">{label}</span></td>
+      <td><span class="fx">{key}_scenario</span></td>
+      <td class="sr">{_fmt(data.get("equity_value"))} {unit}</td>
+      <td class="mn">{data.get("description","")[:60]}</td>
+    </tr>""" for label, key, data in [
+        ("Bull 🐂 +25%", "bull", sc.get("bull",{})),
+        ("Base (cơ sở)", "base", sc.get("base",{})),
+        ("Bear 🐻 -30%", "bear", sc.get("bear",{})),
+    ])
 
-    waterfall = vd.get("waterfall", {})
-    wf_rows = "".join(
-        f'<tr><td class="nm">{lbl}</td><td class="v {cls}">{_fmt(waterfall.get(k))}</td><td style="font-size:10px;color:var(--ink-soft);">{unit}</td></tr>'
-        for lbl, k, cls in [
-            ("Enterprise Value", "enterprise_value", "accent"),
-            ("(-) Nợ vay ròng", "less_debt", "poor"),
-            ("(+) Tiền mặt", "plus_cash", "good"),
-            ("= Equity Value", "equity_value", ""),
-        ]
-    )
+    wf = vd.get("waterfall", {})
+    wf_rows = "".join(f"""<tr>
+      <td><span class="nm">{lbl}</span></td>
+      <td><span class="fx">{key}</span></td>
+      <td class="sr">{_fmt(wf.get(key))} {unit}</td>
+      <td class="mn">&nbsp;</td>
+    </tr>""" for lbl, key in [
+        ("Enterprise Value", "enterprise_value"),
+        ("(-) Nợ vay ròng", "less_debt"),
+        ("(+) Tiền mặt", "plus_cash"),
+        ("= Equity Value", "equity_value"),
+    ])
 
     page_val = f"""
 <div class="page">
@@ -197,42 +205,45 @@ def render_valuation_html(payload: dict, config: dict = None,
     <div class="a-head">
       <div class="a-eyebrow">02 &nbsp;·&nbsp; <b>ĐỊNH GIÁ</b></div>
       <div class="a-title">Kết Quả Định Giá</div>
-      <div class="a-en">Valuation Results · WACC {wacc}% · g {tg}%</div>
+      <div class="a-en">Valuation Results</div>
+      <div class="a-desc">WACC {wacc}% · Terminal growth {tg}% · Đơn vị: {unit}</div>
     </div>
     <table class="ledger" style="margin-bottom:16px;">
-      <colgroup><col style="width:28%"><col style="width:22%"><col style="width:22%"><col></colgroup>
-      <thead><tr><th>Phương pháp</th><th>Low</th><th>Mid</th><th>High ({unit})</th></tr></thead>
+      <colgroup><col class="c-name"><col class="c-f"><col class="c-s"><col class="c-m"></colgroup>
+      <thead><tr><th>Phương pháp</th><th>Key</th><th>Low – High</th><th>Mid Value</th></tr></thead>
       <tbody>{ff_rows}</tbody>
     </table>
+    <div class="legend" style="margin-bottom:4px;"><i>Football Field</i><i class="src">Waterfall Bridge</i></div>
     <table class="ledger" style="margin-bottom:16px;">
-      <colgroup><col style="width:28%"><col style="width:30%"><col></colgroup>
-      <thead><tr><th>Kịch bản</th><th>Equity Value ({unit})</th><th>Mô tả</th></tr></thead>
+      <colgroup><col class="c-name"><col class="c-f"><col class="c-s"><col class="c-m"></colgroup>
+      <thead><tr><th>Kịch bản</th><th>Key</th><th>Equity Value</th><th>Mô tả</th></tr></thead>
       <tbody>{sc_rows}</tbody>
     </table>
     <table class="ledger">
-      <colgroup><col style="width:40%"><col style="width:30%"><col></colgroup>
-      <thead><tr><th colspan="3">Waterfall Bridge: EV → Equity</th></tr></thead>
+      <colgroup><col class="c-name"><col class="c-f"><col class="c-s"><col class="c-m"></colgroup>
+      <thead><tr><th colspan="4">Waterfall: EV → Equity</th></tr></thead>
       <tbody>{wf_rows}</tbody>
     </table>
     <div class="pagefoot"><span>ValuAI Admin Preview — Định giá</span><span>Trang 2</span></div>
   </div>
 </div>"""
 
-    # ── PAGE: 5Y PROJECTION (Direction B — Banded) ───────────────
+    # ── 5Y PROJECTION — Direction B ───────────────────────────────
     proj_bands = ""
     for p in projections:
         yr = p.get("year_label", f"Y{p.get('year_index','')}")
+        g = p.get("growth_pct", 0) or 0
+        g_str = f'<span style="color:{"#10b981" if g>=0 else "#ef4444"};font-weight:700;">{"+" if g>=0 else ""}{g:.1f}%</span>'
         proj_bands += f"""
 <div class="band">
   <div class="left">
     <div class="nm">{yr}</div>
-    <div class="fx">Tăng trưởng: {_fmt(p.get("growth_pct"),1)}% &nbsp;|&nbsp; Net margin: {_fmt(p.get("net_margin_pct"),1)}%</div>
+    <div class="fx">revenue_growth: {g:+.1f}%</div>
   </div>
   <div class="right">
-    <div class="cell"><div class="lab">Doanh thu</div><div class="val">{_fmt(p.get("revenue"))}</div></div>
-    <div class="cell"><div class="lab">EBITDA</div><div class="val">{_fmt(p.get("ebitda"))}</div></div>
-    <div class="cell"><div class="lab">EBITDA %</div><div class="val">{_fmt(p.get("ebitda_margin_pct"),1)}%</div></div>
-    <div class="cell"><div class="lab">FCFF</div><div class="val">{_fmt(p.get("fcff"))}</div></div>
+    <div class="cell"><div class="lab">Doanh thu</div><div class="val">{_fmt(p.get("revenue"))} {unit}</div></div>
+    <div class="cell src"><div class="lab">EBITDA ({_fmt(p.get("ebitda_margin_pct"),1)}%)</div><div class="val">{_fmt(p.get("ebitda"))} {unit}</div></div>
+    <div class="cell"><div class="lab">FCFF</div><div class="val">{_fmt(p.get("fcff"))} {unit}</div></div>
   </div>
 </div>"""
 
@@ -249,33 +260,39 @@ def render_valuation_html(payload: dict, config: dict = None,
       </div>
     </div>
     {proj_bands}
-    <div class="pagefoot"><span>ValuAI Admin Preview — Dự phóng</span><span>Trang 3</span></div>
+    <div class="pagefoot"><span>ValuAI Admin Preview — Dự phóng tài chính</span><span>Trang 3</span></div>
   </div>
 </div>"""
 
-    # ── PAGE: DEAL RECOMMENDATION (Direction C — Sidebar) ─────────
+    # ── DEAL RECOMMENDATION — Direction C ─────────────────────────
     deal = thesis.get("deal_recommendation", {})
     exit_s = thesis.get("exit_strategy", {})
     ret_scenarios = thesis.get("return_scenarios", [])
 
-    deal_items = [
-        ("🎯", "Mục tiêu giao dịch", deal.get("primary_objective","")[:80]),
-        ("💰", "Khoảng định giá", deal.get("fair_value_range_text","")[:80]),
-        ("📋", "Cấu trúc deal", deal.get("deal_structure","")[:80]),
-        ("🏛️", "Quản trị sau M&A", deal.get("post_deal_governance","")[:80]),
-        ("🚪", "Chiến lược thoát vốn", f"{exit_s.get('primary_exit','')} · {exit_s.get('target_timeline_years','')} năm"),
+    deal_metrics = [
+        ("Mục tiêu giao dịch", "primary_objective", deal.get("primary_objective","")[:60], deal.get("deal_structure","")[:60]),
+        ("Khoảng định giá", "fair_value_range", deal.get("fair_value_range_text","")[:60], f"Pre-money: {_fmt(deal.get('pre_money_valuation'))} {unit}"),
+        ("Chiến lược thoát vốn", "exit_strategy", f"{exit_s.get('primary_exit','')} · {exit_s.get('target_timeline_years','')} năm", f"Target EV: {_fmt(exit_s.get('target_ev_at_exit'))} {unit}"),
     ]
-    deal_rows = "".join(f"""<div class="c-row">
-      <div class="ico">{ico}</div>
-      <div class="txt"><div class="nm">{nm}</div><div class="d">{d}</div></div>
-    </div>""" for ico, nm, d in deal_items if d)
+    for r in ret_scenarios[:3]:
+        deal_metrics.append((
+            f"Kịch bản {r.get('scenario','')}",
+            f"irr_{r.get('scenario','').lower()}",
+            f"IRR: {_fmt(r.get('irr_pct'),1)}% · MOIC: {_fmt(r.get('moic'),2)}x",
+            r.get("description","")[:60],
+        ))
 
-    ret_rows = "".join(f"""<tr>
-      <td class="nm">{r.get("scenario","")}</td>
-      <td class="v">{_fmt(r.get("irr_pct"),1)}%</td>
-      <td class="v">{_fmt(r.get("moic"),2)}x</td>
-      <td style="font-size:10px;color:var(--ink-soft);">{r.get("description","")[:50]}</td>
-    </tr>""" for r in ret_scenarios)
+    metrics_html = ""
+    for nm, fx, tx1, tx2 in deal_metrics:
+        metrics_html += f"""
+<div class="c-metric">
+  <div class="nm">{nm}</div>
+  <span class="fx">{fx}</span>
+  <div class="grid2">
+    <div><div class="lab">Giá trị</div><div class="tx">{tx1}</div></div>
+    <div><div class="lab s">Chi tiết</div><div class="tx s">{tx2}</div></div>
+  </div>
+</div>"""
 
     page_deal = f"""
 <div class="page">
@@ -287,73 +304,34 @@ def render_valuation_html(payload: dict, config: dict = None,
       <h2>Khuyến Nghị Đầu Tư</h2>
       <div class="en">Investment Recommendation</div>
       <div class="d">
-        Pre-money: {_fmt(deal.get("pre_money_valuation"))} {unit}<br>
         Investment: {_fmt(deal.get("investment_amount_suggested"))} {unit}<br>
-        Post-money: {_fmt(deal.get("post_money_valuation"))} {unit}
+        Post-money: {_fmt(deal.get("post_money_valuation"))} {unit}<br>
+        Next: {deal.get("next_steps","")[:60]}
       </div>
-      <div class="sidefoot">{deal.get("next_steps","")[:80]}<br>ValuAI Admin Preview</div>
+      <div class="sidefoot">ValuAI Admin Preview<br>{today}</div>
     </div>
     <div class="c-main">
-      <div class="c-list">{deal_rows}</div>
-      <table class="ledger" style="margin-top:16px;">
-        <colgroup><col style="width:25%"><col style="width:20%"><col style="width:20%"><col></colgroup>
-        <thead><tr><th>Kịch bản</th><th>IRR</th><th>MOIC</th><th>Mô tả</th></tr></thead>
-        <tbody>{ret_rows}</tbody>
-      </table>
-      <div class="c-mainfoot"><span>Cập nhật: {today}</span><span>ValuAI © {year}</span></div>
+      {metrics_html}
+      <div class="c-mainfoot">
+        <span>Cập nhật: {today}</span>
+        <span>ValuAI © {year}</span>
+      </div>
     </div>
   </div>
 </div>"""
 
-    # ── ADMIN TOOLBAR (with tab + theme switcher integrated) ───────
-    # Build theme buttons inline in toolbar
-    theme_btns = " ".join(
-        f'<button class="th-btn{" on" if t == theme else ""}" onclick="setTheme(\'{t}\')" data-t="{t}">'
-        f'<b>{t}</b><small>{THEME_META[t][0]}</small></button>'
-        for t in ["A", "B", "C"]
-    )
-    themes_js = ", ".join(
-        f'"{t}": `{_js_esc(THEME_CSS[t])}`' for t in ["A", "B", "C"]
-    )
-
-    toolbar = f"""
-<div class="toolbar">
-  <div class="tb-brand">ValuAI<b>Admin Preview</b></div>
-  <div class="tabs">
-    <button class="tab active" onclick="showSection('exec')">Summary<small>Cover + Exec</small></button>
-    <button class="tab" onclick="showSection('val')">Định giá<small>Valuation</small></button>
-    <button class="tab" onclick="showSection('proj')">Dự phóng<small>5Y</small></button>
-    <button class="tab" onclick="showSection('deal')">Deal<small>Recommendation</small></button>
-  </div>
-  <div class="tb-group" style="gap:6px;">
-    <span style="font-size:9px;opacity:.5;letter-spacing:1px;text-transform:uppercase;">STYLE</span>
-    {theme_btns}
-  </div>
-  <div class="tb-group" style="margin-left:auto;">
-    <span style="font-family:var(--sans);font-size:11px;opacity:.7;">{company_name} &nbsp;·&nbsp; {today}</span>
-  </div>
-</div>
-<div class="note"><span>Admin</span> Preview nội bộ — Không phải báo cáo cuối cùng</div>"""
-
-    js = f"""<script>
-const _TH={{{themes_js}}};
-function setTheme(t){{
-  var el=document.getElementById('theme-css');
-  if(el&&_TH[t])el.textContent=_TH[t];
-  document.querySelectorAll('.th-btn').forEach(function(b){{b.classList.toggle('on',b.dataset.t===t);}});
-  try{{localStorage.setItem('vt',t);}}catch(e){{}}
-}}
-function showSection(id){{
-  document.querySelectorAll('.pg-section').forEach(s=>s.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
-  document.getElementById('sec-'+id).classList.add('active');
-  event.currentTarget.classList.add('active');
-}}
-window.addEventListener('DOMContentLoaded',function(){{
+    # ── PAGE-SECTION JS ───────────────────────────────────────────
+    tab_js = """<script>
+function showSec(id){
+  document.querySelectorAll('.pg-section').forEach(function(s){s.classList.remove('active');});
+  document.querySelectorAll('.tab').forEach(function(t){t.classList.remove('active');});
+  var el=document.getElementById('sec-'+id);
+  if(el)el.classList.add('active');
+  if(event&&event.currentTarget)event.currentTarget.classList.add('active');
+}
+window.addEventListener('DOMContentLoaded',function(){
   document.getElementById('sec-exec').classList.add('active');
-  var saved;try{{saved=localStorage.getItem('vt');}}catch(e){{}}
-  if(saved&&_TH[saved])setTheme(saved);
-}});
+});
 </script>"""
 
     return f"""<!DOCTYPE html>
@@ -362,8 +340,15 @@ window.addEventListener('DOMContentLoaded',function(){{
 <meta charset="UTF-8">
 <title>ValuAI Admin — {company_name}</title>
 {FONTS}
-{build_styles(accent, theme, custom_css)}
-{_ADMIN_TOOLBAR_CSS}
+{build_styles(accent, custom_css)}
+<style>
+.pg-section{{display:none;}}
+.pg-section.active{{display:flex;flex-direction:column;align-items:center;gap:34px;}}
+@media print{{
+  .toolbar,.note{{display:none;}}
+  .pg-section{{display:flex!important;flex-direction:column;align-items:center;gap:0;}}
+}}
+</style>
 </head>
 <body>
 {toolbar}
@@ -373,6 +358,7 @@ window.addEventListener('DOMContentLoaded',function(){{
   <div id="sec-proj" class="pg-section">{page_proj}</div>
   <div id="sec-deal" class="pg-section">{page_deal}</div>
 </div>
-{js}
+{STYLE_JS}
+{tab_js}
 </body>
 </html>"""

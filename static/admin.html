@@ -260,23 +260,43 @@
             <div id="color-fields"></div>
           </div>
           <div class="tab-content" id="tab-style">
-            <div style="margin-bottom:20px;">
-              <label style="font-size:13px;font-weight:700;color:var(--primary);margin-bottom:12px;display:block;">Preset Theme cho báo cáo HTML</label>
-              <p style="font-size:12px;color:var(--muted);margin-bottom:16px;">User có thể toggle giữa 3 style khi xem báo cáo. Theme được chọn ở đây là mặc định khi mở.</p>
-              <div id="theme-cards" style="display:flex;gap:12px;margin-bottom:8px;"></div>
-              <input type="hidden" id="cfg-html-theme" value="A">
+            <div style="background:var(--light);border-radius:8px;padding:16px;margin-bottom:20px;border:1px solid #dbeafe;">
+              <div style="font-weight:700;font-size:13px;color:var(--primary);margin-bottom:8px;">🎨 Cách user chọn style</div>
+              <p style="font-size:12px;color:var(--text);line-height:1.7;margin-bottom:10px;">
+                Mỗi báo cáo HTML (trailer, explainer, valuation preview) có <b>toolbar tích hợp sẵn</b> gồm:
+              </p>
+              <div style="display:flex;gap:12px;flex-wrap:wrap;">
+                <div style="background:white;border-radius:6px;padding:10px 14px;border:1px solid var(--border);font-size:12px;">
+                  <b>🔴 🔵 🟢 Accent swatches</b><br>
+                  <span style="color:var(--muted);">3 màu: brand + xanh + xanh lá<br>Click để đổi màu accent ngay</span>
+                </div>
+                <div style="background:white;border-radius:6px;padding:10px 14px;border:1px solid var(--border);font-size:12px;">
+                  <b>Serif | Sans toggle</b><br>
+                  <span style="color:var(--muted);">Đổi font heading<br>IBM Plex Serif hoặc Sans</span>
+                </div>
+              </div>
+              <p style="font-size:11px;color:var(--muted);margin-top:10px;">Lựa chọn của user được lưu trong <code>localStorage</code> — nhớ qua các lần mở.</p>
             </div>
             <div>
               <label style="font-size:13px;font-weight:700;color:var(--primary);display:block;margin-bottom:6px;">Custom CSS Override</label>
-              <p style="font-size:12px;color:var(--muted);margin-bottom:8px;">CSS này được áp dụng SAU theme CSS — ghi đè bất kỳ style nào. Dùng để tùy chỉnh theo yêu cầu từng client.</p>
-              <textarea id="cfg-custom-css" rows="18" spellcheck="false"
+              <p style="font-size:12px;color:var(--muted);margin-bottom:10px;">
+                CSS này được áp dụng SAU design system CSS — ghi đè bất kỳ style nào.
+                Dùng để tùy chỉnh theo yêu cầu từng client cụ thể.
+              </p>
+              <div style="font-size:11px;color:var(--text);background:#f8fafc;border-radius:6px;padding:10px 12px;margin-bottom:10px;font-family:monospace;border:1px solid var(--border);">
+                /* Ví dụ override: */<br>
+                :root { --accent: #e53e3e; --ink: #0f172a; }<br>
+                .band .left { background: #1e1b4b; }<br>
+                .ledger thead th { letter-spacing: 2px; font-size: 10px; }<br>
+                .cov h1 { font-size: 44px; }
+              </div>
+              <textarea id="cfg-custom-css" rows="16" spellcheck="false"
                 style="font-family:monospace;font-size:12px;background:#1e293b;color:#e2e8f0;border:none;border-radius:6px;width:100%;padding:14px;resize:vertical;"
-                placeholder="/* Paste CSS ở đây để override bất kỳ style nào */
-/* Ví dụ: */
-:root { --accent: #e53e3e; }
-.band .left { background: #1a1a2e; }
-table.ledger thead th { font-size: 11px; }"></textarea>
-              <div style="font-size:11px;color:var(--muted);margin-top:6px;">💡 Dùng browser DevTools (F12) trên trang preview để tìm tên class cần sửa.</div>
+                placeholder="/* Paste CSS ở đây */"></textarea>
+              <div style="font-size:11px;color:var(--muted);margin-top:6px;">
+                💡 Dùng F12 DevTools trên trang preview để inspect class names.
+                Các class chính: <code>.band .left</code>, <code>.ledger thead th</code>, <code>.cov h1</code>, <code>.c-side</code>, <code>.b-num</code>
+              </div>
             </div>
           </div>
           <div class="tab-content" id="tab-content">
@@ -519,44 +539,6 @@ async function loadConfig() {
   } catch(e) { console.error('loadConfig error', e); }
 }
 
-const THEME_DEFS = {
-  A: { name: 'Classique', desc: 'Serif · Navy · Formal', preview: '#1a2b4a', accent: '#b08d57' },
-  B: { name: 'Corporate', desc: 'Sans · Blue · Modern', preview: '#1e40af', accent: '#2563eb' },
-  C: { name: 'Contrast',  desc: 'Bold · Dark · Fresh',  preview: '#0f172a', accent: '#10b981' },
-};
-
-function renderThemeCards(currentTheme) {
-  const container = document.getElementById('theme-cards');
-  container.innerHTML = Object.entries(THEME_DEFS).map(([key, t]) => `
-    <div onclick="selectTheme('${key}')" id="theme-card-${key}" style="
-      flex:1;border:2px solid ${key === currentTheme ? t.preview : 'var(--border)'};
-      border-radius:10px;padding:14px;cursor:pointer;transition:.2s;
-      background:${key === currentTheme ? t.preview + '10' : '#fff'};
-    ">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <div style="width:20px;height:20px;border-radius:4px;background:${t.preview};"></div>
-        <div style="width:12px;height:12px;border-radius:50%;background:${t.accent};"></div>
-        <span style="font-weight:700;font-size:14px;">${key}</span>
-      </div>
-      <div style="font-weight:700;font-size:13px;color:${t.preview};">${t.name}</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${t.desc}</div>
-      <div style="margin-top:10px;height:40px;background:${t.preview};border-radius:4px;display:flex;align-items:center;padding:0 8px;">
-        <div style="height:4px;width:30px;background:${t.accent};border-radius:2px;"></div>
-        <div style="flex:1;display:flex;flex-direction:column;gap:3px;padding-left:8px;">
-          <div style="height:2px;background:#ffffff60;border-radius:1px;"></div>
-          <div style="height:2px;width:70%;background:#ffffff40;border-radius:1px;"></div>
-        </div>
-      </div>
-      ${key === currentTheme ? '<div style="text-align:center;margin-top:8px;font-size:11px;font-weight:700;color:'+t.preview+';">✓ Đang dùng</div>' : ''}
-    </div>
-  `).join('');
-}
-
-function selectTheme(key) {
-  document.getElementById('cfg-html-theme').value = key;
-  renderThemeCards(key);
-}
-
 function renderConfigUI(cfg) {
   const colors = cfg.style?.colors || {};
   const colorFields = Object.entries(colors).map(([k, v]) => `
@@ -613,9 +595,6 @@ function renderConfigUI(cfg) {
 
   // Style & CSS tab
   const reportCss = cfg.style?.report_css || {};
-  const currentTheme = reportCss.html_theme || 'A';
-  document.getElementById('cfg-html-theme').value = currentTheme;
-  renderThemeCards(currentTheme);
   document.getElementById('cfg-custom-css').value = reportCss.custom_css || '';
 }
 
@@ -660,13 +639,11 @@ function collectConfigFromUI() {
     }
   });
   // Style & CSS
-  const selTheme = document.getElementById('cfg-html-theme');
   const customCss = document.getElementById('cfg-custom-css');
-  if (selTheme || customCss) {
+  if (customCss) {
     if (!cfg.style) cfg.style = {};
     if (!cfg.style.report_css) cfg.style.report_css = {};
-    if (selTheme) cfg.style.report_css.html_theme = selTheme.value || 'A';
-    if (customCss) cfg.style.report_css.custom_css = customCss.value || '';
+    cfg.style.report_css.custom_css = customCss.value || '';
   }
   return cfg;
 }
