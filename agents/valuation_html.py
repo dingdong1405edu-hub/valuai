@@ -1,34 +1,162 @@
 """Full valuation HTML report — admin preview only."""
+import datetime
+
+_FONTS = (
+    '<link rel="preconnect" href="https://fonts.googleapis.com">'
+    '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+    '<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,400;0,600;0,700;1,400'
+    '&family=IBM+Plex+Serif:wght@400;600;700&family=IBM+Plex+Mono:wght@400;600'
+    '&family=Architects+Daughter&display=swap" rel="stylesheet">'
+)
+
+_CSS = """<style>
+:root{
+  --ink:#1a2b4a;--ink-soft:#3a4a66;--accent:#b08d57;
+  --line:#c9cfd9;--line-soft:#e4e8ef;--paper:#ffffff;--bg:#6b7280;--grey-fill:#eef1f5;
+  --sans:'IBM Plex Sans',sans-serif;--serif:'IBM Plex Serif',serif;
+  --mono:'IBM Plex Mono',monospace;--hand:'Architects Daughter',cursive;--head:var(--serif);
+}
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{background:var(--bg);font-family:var(--sans);color:var(--ink);}
+
+/* ---------- toolbar ---------- */
+.toolbar{
+  position:sticky;top:0;z-index:50;background:#14182099;
+  backdrop-filter:blur(10px);border-bottom:1px solid #00000033;
+  display:flex;align-items:center;gap:22px;flex-wrap:wrap;
+  padding:12px 24px;color:#fff;
+}
+.tb-brand{font-family:var(--hand);font-size:18px;letter-spacing:.3px;opacity:.95;}
+.tb-brand b{display:block;font-family:var(--sans);font-weight:700;font-size:11px;letter-spacing:2px;text-transform:uppercase;opacity:.6;}
+.tabs{display:flex;gap:8px;}
+.tab{
+  font-family:var(--hand);font-size:16px;color:#fff;background:transparent;
+  border:1.5px solid #ffffff40;border-radius:7px;padding:6px 16px;cursor:pointer;
+  transition:.15s;line-height:1.1;
+}
+.tab small{display:block;font-family:var(--sans);font-size:9px;letter-spacing:1px;text-transform:uppercase;opacity:.55;font-weight:600;}
+.tab:hover{border-color:#ffffff90;}
+.tab.active{background:#fff;color:var(--ink);border-color:#fff;}
+.tab.active small{opacity:.5;}
+.tb-group{display:flex;align-items:center;gap:9px;margin-left:auto;font-size:11px;color:#fff;font-family:var(--hand);}
+
+.note{padding:10px 24px;color:#fff;font-family:var(--hand);font-size:14px;opacity:.9;display:flex;gap:8px;align-items:center;}
+.note span{font-family:var(--sans);font-size:10px;letter-spacing:1px;text-transform:uppercase;background:#ffffff22;padding:2px 8px;border-radius:20px;font-weight:600;}
+
+/* ---------- stage / A4 sheets ---------- */
+#stage{padding:30px 0 80px;display:flex;flex-direction:column;align-items:center;gap:34px;}
+.page{
+  width:794px;min-height:1123px;background:var(--paper);position:relative;
+  box-shadow:0 18px 50px #00000040;overflow:hidden;
+}
+.page-tag{
+  position:absolute;top:14px;right:18px;font-family:var(--hand);font-size:13px;
+  color:var(--accent);transform:rotate(3deg);opacity:.85;z-index:5;
+}
+.wm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) rotate(-28deg);
+  font-family:var(--hand);font-size:120px;color:#1a2b4a08;letter-spacing:6px;
+  pointer-events:none;z-index:0;font-weight:400;white-space:nowrap;}
+.logo{display:inline-flex;align-items:center;gap:8px;font-family:var(--hand);font-size:13px;color:var(--ink-soft);}
+.logo i{width:26px;height:26px;border:1.5px dashed var(--ink-soft);border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-style:normal;font-size:11px;font-family:var(--sans);font-weight:700;}
+
+/* ── COVER ── */
+.cov{height:1123px;display:flex;flex-direction:column;padding:74px 76px 60px;position:relative;z-index:1;}
+.cov .top{display:flex;justify-content:space-between;align-items:flex-start;}
+.cov .kicker{font-family:var(--sans);font-size:11px;letter-spacing:3px;text-transform:uppercase;color:var(--accent);font-weight:600;}
+.cov h1{font-family:var(--head);font-weight:700;font-size:46px;line-height:1.05;color:var(--ink);margin-top:auto;letter-spacing:-.5px;}
+.cov .sub{font-family:var(--sans);font-size:15px;color:var(--ink-soft);margin-top:16px;}
+.cov .sub b{color:var(--accent);}
+.cov .intro{margin-top:20px;font-size:13.5px;line-height:1.7;color:var(--ink-soft);border-left:3px solid var(--accent);padding-left:16px;}
+.cov .foot{margin-top:auto;display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);border-top:1px solid var(--line);padding-top:16px;}
+.ribbon{height:8px;width:120px;background:var(--accent);margin-bottom:34px;}
+
+/* ── SECTION SHARED ── */
+.sec{padding:64px 64px 100px;position:relative;z-index:1;min-height:1123px;display:flex;flex-direction:column;}
+.pagefoot{position:absolute;left:64px;right:64px;bottom:34px;display:flex;justify-content:space-between;
+  font-size:10.5px;color:var(--ink-soft);border-top:1px solid var(--line-soft);padding-top:10px;}
+
+/* ── Direction B ── */
+.b-head{display:flex;align-items:flex-end;gap:18px;border-bottom:3px solid var(--ink);padding-bottom:14px;margin-bottom:24px;}
+.b-num{font-family:var(--head);font-size:64px;font-weight:700;color:var(--accent);line-height:.8;}
+.b-htext h2{font-family:var(--head);font-size:28px;font-weight:700;}
+.b-htext .en{font-family:var(--hand);color:var(--ink-soft);font-size:16px;}
+.b-htext .d{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+.band{display:grid;grid-template-columns:36% 1fr;border:1px solid var(--line);border-radius:8px;overflow:hidden;margin-bottom:10px;}
+.band .left{background:var(--ink);color:#fff;padding:13px 16px;display:flex;flex-direction:column;justify-content:center;}
+.band .left .nm{font-family:var(--head);font-weight:600;font-size:14px;line-height:1.25;}
+.band .left .fx{font-family:var(--mono);font-size:10px;color:#cdd6e6;margin-top:7px;border-top:1px solid #ffffff22;padding-top:6px;}
+.band .right{padding:11px 18px;display:flex;gap:26px;align-items:center;flex-wrap:wrap;}
+.cell .lab{font-size:8.5px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:2px;}
+.cell .val{font-size:14px;font-weight:600;color:var(--ink);font-family:var(--mono);}
+.cell .note{font-size:10px;color:var(--ink-soft);margin-top:1px;}
+.pos{color:#10b981;font-weight:700;} .neg{color:#ef4444;font-weight:700;}
+
+/* ── Direction A ── */
+.a-head{margin-bottom:18px;}
+.a-eyebrow{display:flex;align-items:center;gap:12px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--ink-soft);font-weight:600;}
+.a-eyebrow b{color:var(--accent);}
+.a-title{font-family:var(--head);font-size:28px;font-weight:700;margin-top:6px;}
+.a-en{font-family:var(--hand);color:var(--accent);font-size:16px;}
+table.ledger{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:14px;table-layout:fixed;}
+.ledger thead th{background:var(--ink);color:#fff;text-align:left;padding:10px 12px;font-size:10px;letter-spacing:1px;text-transform:uppercase;font-weight:600;}
+.ledger tbody td{border-bottom:1px solid var(--line-soft);padding:10px 12px;vertical-align:middle;}
+.ledger tbody tr:nth-child(even) td{background:#f7f9fb;}
+.ledger .nm{font-weight:600;color:var(--ink);}
+.ledger .v{font-family:var(--mono);font-size:12px;font-weight:600;}
+.ledger .good{color:#10b981;font-weight:700;}
+.ledger .warning{color:#f59e0b;font-weight:700;}
+.ledger .poor{color:#ef4444;font-weight:700;}
+.ledger .accent{color:var(--accent);font-weight:700;}
+
+/* ── KPI strip ── */
+.kpi-strip{display:flex;gap:12px;margin-bottom:24px;}
+.kpi-card{flex:1;background:var(--grey-fill);border:1px solid var(--line);border-radius:8px;padding:14px 16px;text-align:center;}
+.kpi-card .lbl{font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--accent);font-weight:600;margin-bottom:6px;}
+.kpi-card .val{font-family:var(--head);font-size:22px;font-weight:700;color:var(--ink);}
+.kpi-card .sub{font-size:10px;color:var(--ink-soft);margin-top:3px;}
+.kpi-card.hl{background:var(--ink);border-color:var(--ink);}
+.kpi-card.hl .lbl{color:var(--accent);}
+.kpi-card.hl .val{color:#fff;}
+.kpi-card.hl .sub{color:#cdd6e6;}
+
+/* ── rec badge ── */
+.rec{display:inline-flex;align-items:center;gap:8px;background:var(--accent);color:#fff;
+  font-family:var(--head);font-weight:700;font-size:16px;padding:6px 18px;border-radius:6px;}
+
+/* ── section divider ── */
+.divider{border-top:1.5px solid var(--line);margin:20px 0;}
+
+/* ── page visibility (tab switching) ── */
+.pg-section{display:none;}
+.pg-section.active{display:flex;flex-direction:column;align-items:center;gap:34px;}
+
+@media print{.toolbar,.note{display:none;} body{background:white;padding:0;}
+  #stage{padding:0;gap:0;} .page{box-shadow:none;} .pg-section{display:flex!important;flex-direction:column;align-items:center;gap:0;}}
+</style>"""
 
 
-def _fmt(v, decimals=0) -> str:
+def _fmt(v, d=0) -> str:
     if v is None:
-        return "N/A"
+        return "—"
     try:
-        if decimals == 0:
-            return f"{float(v):,.0f}"
-        return f"{float(v):,.{decimals}f}"
+        return f"{float(v):,.{d}f}"
     except Exception:
         return str(v)
+
+
+def _yoy(cur, prev) -> str:
+    if cur is None or prev is None or prev == 0:
+        return ""
+    g = (cur - prev) / abs(prev) * 100
+    cls = "pos" if g >= 0 else "neg"
+    return f'<span class="{cls}">{"+" if g>=0 else ""}{g:.1f}%</span>'
 
 
 def render_valuation_html(payload: dict, config: dict = None,
                            brand: dict = None) -> str:
     config = config or {}
     brand = brand or {}
-    colors = config.get("style", {}).get("colors", {})
-    css = config.get("style", {}).get("report_css", {})
     content = config.get("content", {})
-
-    primary = brand.get("primary") or colors.get("primary", "#1e3a8a")
-    secondary = brand.get("secondary") or colors.get("secondary", "#2563eb")
-    primary_light = brand.get("primary_light") or colors.get("primary_light", "#eff6ff")
-    text_primary = colors.get("text_primary", "#1f2937")
-    text_body = colors.get("text_body", "#374151")
-    text_muted = colors.get("text_muted", "#6b7280")
-    border = colors.get("border", "#d1d5db")
-    stripe = colors.get("stripe", "#f8fafc")
-    head = css.get("head", "Inter, system-ui, sans-serif")
 
     financials = payload.get("financials", {})
     company = financials.get("company", {})
@@ -38,6 +166,7 @@ def render_valuation_html(payload: dict, config: dict = None,
     vd = val.get("valuation", val) if "valuation" in val else val
     summary = vd.get("summary", {})
     income_cur = financials.get("income_statement", {}).get("current", {})
+    income_prev = financials.get("income_statement", {}).get("previous", {})
     proj_data = payload.get("projection", {})
     proj = proj_data.get("projection", proj_data) if isinstance(proj_data, dict) else {}
     projections = proj.get("projections", [])
@@ -46,141 +175,220 @@ def render_valuation_html(payload: dict, config: dict = None,
     r = ratios.get("ratios", {})
     industry = payload.get("industry", {})
     ind = industry.get("industry", industry) if isinstance(industry, dict) else {}
-    today_str = __import__("datetime").date.today().strftime("%d/%m/%Y")
+    today = datetime.date.today().strftime("%d/%m/%Y")
+    year = datetime.date.today().year
 
-    style = f"""
-<style>
-* {{ box-sizing: border-box; margin: 0; padding: 0; }}
-body {{ font-family: {head}; color: {text_primary}; background: white; line-height: 1.5; }}
-.page {{ width: 210mm; min-height: 297mm; page-break-after: always; display: flex; flex-direction: column; }}
-.hdr {{ background: {primary}; color: white; padding: 10px 20px; font-size: 13px; font-weight: 700; }}
-.hdr-sub {{ display: flex; justify-content: space-between; align-items: center; }}
-.bar {{ height: 4px; background: {secondary}; }}
-.body {{ flex: 1; padding: 18px 22px; overflow: hidden; }}
-.foot {{ background: {primary}; color: rgba(255,255,255,.7); font-size: 8px; padding: 4px 20px; display: flex; justify-content: space-between; }}
-h2 {{ font-size: 15px; color: {primary}; margin-bottom: 8px; font-weight: 800; }}
-h3 {{ font-size: 12px; color: {primary}; margin: 10px 0 6px; font-weight: 700; }}
-table {{ width: 100%; border-collapse: collapse; font-size: 9px; margin-bottom: 10px; }}
-th {{ background: {primary}; color: white; padding: 5px 7px; text-align: left; }}
-td {{ padding: 4px 7px; border-bottom: 1px solid {border}; color: {text_body}; }}
-tr:nth-child(even) td {{ background: {stripe}; }}
-.kpi-grid {{ display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }}
-.kpi {{ background: {primary_light}; border: 1px solid {primary}; border-radius: 6px; padding: 10px; text-align: center; }}
-.kpi-label {{ font-size: 8px; color: {text_muted}; margin-bottom: 3px; }}
-.kpi-value {{ font-size: 16px; font-weight: 800; color: {primary}; }}
-.good {{ color: #10b981; }} .warning {{ color: #f59e0b; }} .poor {{ color: #ef4444; }}
-.badge {{ background: {primary}; color: white; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; display: inline-block; }}
-.section-divider {{ border-top: 2px solid {primary}; margin: 12px 0; }}
-</style>
-"""
+    company_name = company.get("name", "N/A")
+    recommendation = es.get("recommendation", "N/A")
+    rec_color = {"BUY": "#10b981", "HOLD": "#f59e0b", "SELL": "#ef4444"}.get(recommendation, "var(--accent)")
 
-    page1 = f"""
+    # ── SECTION 1: EXECUTIVE SUMMARY ──────────────────────────────
+    fv_low = _fmt(summary.get("fair_value_low"))
+    fv_mid = _fmt(summary.get("fair_value_mid"))
+    fv_high = _fmt(summary.get("fair_value_high"))
+    wacc = _fmt(vd.get("assumptions", {}).get("wacc_pct"), 1)
+    tg = _fmt(vd.get("assumptions", {}).get("terminal_growth_pct"), 1)
+    dcf_eq = _fmt(vd.get("dcf", {}).get("equity_value"))
+
+    kpi_strip = f"""
+<div class="kpi-strip">
+  <div class="kpi-card hl">
+    <div class="lbl">Fair Value Mid</div>
+    <div class="val">{fv_mid}</div>
+    <div class="sub">{unit}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="lbl">Fair Value Range</div>
+    <div class="val" style="font-size:16px;">{fv_low} – {fv_high}</div>
+    <div class="sub">{unit}</div>
+  </div>
+  <div class="kpi-card">
+    <div class="lbl">Khuyến nghị</div>
+    <div class="val" style="color:{rec_color};">{recommendation}</div>
+    <div class="sub">{es.get("company_brief","")[:40]}</div>
+  </div>
+</div>"""
+
+    # Key value drivers
+    kvd_rows = ""
+    for d in thesis.get("key_value_drivers_ranked", [])[:6]:
+        kvd_rows += f"""<tr>
+          <td style="text-align:center;font-family:var(--mono);color:var(--accent);font-weight:700;">{d.get("rank","")}</td>
+          <td class="nm">{d.get("driver","")}</td>
+          <td style="font-size:11px;color:var(--ink-soft);">{d.get("rationale","")[:120]}</td>
+        </tr>"""
+
+    page_exec = f"""
 <div class="page">
-  <div class="hdr">
-    <div>{content.get('report_title','BÁO CÁO ĐỊNH GIÁ DOANH NGHIỆP')}</div>
-    <div class="hdr-sub">
-      <span style="font-size:10px;opacity:.8">{company.get('name','')}</span>
-      <span style="font-size:9px;opacity:.7">{today_str}</span>
+  <div class="wm">ADMIN</div>
+  <div class="page-tag">Executive</div>
+  <div class="cov">
+    <div class="top">
+      <div class="logo"><i>V</i>ValuAI</div>
+      <div class="kicker">Admin Preview &nbsp;·&nbsp; {today}</div>
+    </div>
+    <div style="margin-top:auto;">
+      <div class="ribbon"></div>
+      <div class="kicker">BÁO CÁO ĐỊNH GIÁ — ADMIN PREVIEW</div>
+      <h1>{company_name}</h1>
+      <div class="sub">Ngành: <b>{ind.get("industry_name", company.get("industry","N/A"))}</b></div>
+      <div class="intro">{es.get("headline","")}</div>
+    </div>
+    <div class="foot">
+      <span style="font-style:italic;">{content.get("disclaimer_default","")[:120]}</span>
+      <span>ValuAI © {year}</span>
     </div>
   </div>
-  <div class="bar"></div>
-  <div class="body">
-    <h2>EXECUTIVE SUMMARY</h2>
-    <div class="kpi-grid">
-      <div class="kpi">
-        <div class="kpi-label">Fair Value (Mid)</div>
-        <div class="kpi-value">{_fmt(summary.get('fair_value_mid'))}</div>
-        <div style="font-size:8px;color:{text_muted};">{unit}</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Fair Value Range</div>
-        <div class="kpi-value" style="font-size:12px;">{_fmt(summary.get('fair_value_low'))} – {_fmt(summary.get('fair_value_high'))}</div>
-        <div style="font-size:8px;color:{text_muted};">{unit}</div>
-      </div>
-      <div class="kpi">
-        <div class="kpi-label">Khuyến nghị</div>
-        <div class="kpi-value" style="font-size:18px;">{es.get('recommendation','N/A')}</div>
-      </div>
-    </div>
-    <p style="font-size:10px;color:{text_body};margin-bottom:8px;">{es.get('headline','')}</p>
-    <table>
-      <tr><th>Chỉ tiêu</th><th>Giá trị</th></tr>
-      <tr><td>Ngành</td><td>{ind.get('industry_name','N/A')}</td></tr>
-      <tr><td>Doanh thu</td><td>{_fmt(income_cur.get('net_revenue') or income_cur.get('revenue'))} {unit}</td></tr>
-      <tr><td>Lợi nhuận ròng</td><td>{_fmt(income_cur.get('net_profit_after_tax'))} {unit}</td></tr>
-      <tr><td>WACC</td><td>{_fmt(vd.get('assumptions',{}).get('wacc_pct'),1)}%</td></tr>
-      <tr><td>Terminal Growth</td><td>{_fmt(vd.get('assumptions',{}).get('terminal_growth_pct'),1)}%</td></tr>
-      <tr><td>DCF Equity Value</td><td>{_fmt(vd.get('dcf',{}).get('equity_value'))} {unit}</td></tr>
-    </table>
-    <div class="section-divider"></div>
-    <h3>KEY VALUE DRIVERS</h3>
-    <table>
-      <tr><th>#</th><th>Driver</th><th>Rationale</th></tr>
-"""
-    for d in thesis.get("key_value_drivers_ranked", [])[:5]:
-        page1 += f"<tr><td>{d.get('rank','')}</td><td>{d.get('driver','')}</td><td>{d.get('rationale','')}</td></tr>\n"
-    page1 += """
-    </table>
-  </div>
-  <div class="foot"><span>ValuAI Admin Preview</span><span>Trang 1</span></div>
 </div>
-"""
+<div class="page">
+  <div class="page-tag">Exec Summary</div>
+  <div class="sec">
+    <div class="b-head">
+      <div class="b-num">01</div>
+      <div class="b-htext">
+        <h2>Executive Summary</h2>
+        <div class="en">Tóm tắt điều hành</div>
+        <div class="d">Đơn vị: {unit}</div>
+      </div>
+    </div>
+    {kpi_strip}
+    <div class="a-head">
+      <div class="a-eyebrow"><b>KEY VALUE DRIVERS</b></div>
+    </div>
+    <table class="ledger">
+      <thead><tr><th style="width:6%;">#</th><th style="width:30%;">Driver</th><th>Rationale</th></tr></thead>
+      <tbody>{kvd_rows}</tbody>
+    </table>
+    <div class="divider"></div>
+    <div style="font-size:11.5px;color:var(--ink-soft);line-height:1.7;">{es.get("investment_thesis","") or thesis.get("investment_case_summary","")[:400]}</div>
+    <div class="pagefoot">
+      <span>ValuAI Admin Preview — Executive Summary</span>
+      <span>Trang 1</span>
+    </div>
+  </div>
+</div>"""
 
-    proj_rows = ""
-    for p in projections:
-        proj_rows += f"""
-<tr>
-  <td>{p.get('year_label','')}</td>
-  <td>{_fmt(p.get('revenue'))}</td>
-  <td>{_fmt(p.get('ebitda'))}</td>
-  <td>{_fmt(p.get('ebitda_margin_pct'),1)}%</td>
-  <td>{_fmt(p.get('net_income'))}</td>
-  <td>{_fmt(p.get('fcff'))}</td>
-</tr>"""
-
+    # ── SECTION 2: VALUATION & PROJECTION ─────────────────────────
+    # Football field table
     ff = vd.get("football_field", [])
-    ff_rows = ""
-    for row in ff:
-        ff_rows += f"<tr><td>{row.get('method','')}</td><td>{_fmt(row.get('low'))}</td><td>{_fmt(row.get('mid'))}</td><td>{_fmt(row.get('high'))}</td></tr>\n"
+    ff_rows = "".join(f"""<tr>
+      <td class="nm">{row.get("method","")}</td>
+      <td class="v">{_fmt(row.get("low"))}</td>
+      <td class="v accent">{_fmt(row.get("mid"))}</td>
+      <td class="v">{_fmt(row.get("high"))}</td>
+    </tr>""" for row in ff)
 
-    page2 = f"""
-<div class="page">
-  <div class="hdr"><div>ĐỊNH GIÁ & DỰ PHÓNG</div></div>
-  <div class="bar"></div>
-  <div class="body">
-    <h2>DỰ PHÓNG 5 NĂM</h2>
-    <table>
-      <tr><th>Năm</th><th>Doanh thu</th><th>EBITDA</th><th>EBITDA %</th><th>LNST</th><th>FCFF</th></tr>
-      {proj_rows}
-    </table>
-    <h2>FOOTBALL FIELD ({unit})</h2>
-    <table>
-      <tr><th>Phương pháp</th><th>Low</th><th>Mid</th><th>High</th></tr>
-      {ff_rows}
-    </table>
-    <h3>DCF Details</h3>
-    <table>
-      <tr><td>PV FCFF</td><td>{_fmt(vd.get('dcf',{}).get('pv_fcff'))} {unit}</td></tr>
-      <tr><td>Terminal Value PV</td><td>{_fmt(vd.get('dcf',{}).get('pv_terminal_value'))} {unit}</td></tr>
-      <tr><td>Enterprise Value</td><td>{_fmt(vd.get('dcf',{}).get('enterprise_value'))} {unit}</td></tr>
-      <tr><td>Net Debt</td><td>{_fmt(vd.get('dcf',{}).get('net_debt'))} {unit}</td></tr>
-      <tr><td><b>Equity Value</b></td><td><b>{_fmt(vd.get('dcf',{}).get('equity_value'))} {unit}</b></td></tr>
-    </table>
+    # Scenarios
+    sc = vd.get("scenarios", {})
+    sc_rows = ""
+    for label, data in [("Bull 🐂", sc.get("bull",{})), ("Base", sc.get("base",{})), ("Bear 🐻", sc.get("bear",{}))]:
+        sc_rows += f"""<tr>
+          <td class="nm">{label}</td>
+          <td class="v">{_fmt(data.get("equity_value"))}</td>
+          <td style="font-size:10px;color:var(--ink-soft);">{data.get("description","")[:60]}</td>
+        </tr>"""
+
+    # 5Y projection bands
+    proj_bands = ""
+    for p in projections:
+        yr = p.get("year_label", f"Y{p.get('year_index','')}")
+        rev = _fmt(p.get("revenue"))
+        ebitda = _fmt(p.get("ebitda"))
+        ebitda_m = _fmt(p.get("ebitda_margin_pct"), 1)
+        fcff = _fmt(p.get("fcff"))
+        proj_bands += f"""
+<div class="band">
+  <div class="left">
+    <div class="nm">{yr}</div>
+    <div class="fx">Tăng trưởng: {_fmt(p.get("growth_pct"),1)}%</div>
   </div>
-  <div class="foot"><span>ValuAI Admin Preview</span><span>Trang 2</span></div>
-</div>
-"""
+  <div class="right">
+    <div class="cell"><div class="lab">Doanh thu</div><div class="val">{rev}</div></div>
+    <div class="cell"><div class="lab">EBITDA</div><div class="val">{ebitda}</div></div>
+    <div class="cell"><div class="lab">EBITDA %</div><div class="val">{ebitda_m}%</div></div>
+    <div class="cell"><div class="lab">FCFF</div><div class="val">{fcff}</div></div>
+  </div>
+</div>"""
 
-    html = f"""<!DOCTYPE html>
+    page_val = f"""
+<div class="page">
+  <div class="page-tag">Valuation</div>
+  <div class="sec">
+    <div class="a-head">
+      <div class="a-eyebrow">02 &nbsp;·&nbsp; <b>ĐỊNH GIÁ</b></div>
+      <div class="a-title">Kết Quả Định Giá</div>
+      <div class="a-en">Valuation Results · WACC {wacc}% · g {tg}%</div>
+    </div>
+    <table class="ledger" style="margin-bottom:18px;">
+      <colgroup><col style="width:25%"><col style="width:20%"><col style="width:20%"><col style="width:35%"></colgroup>
+      <thead><tr><th>Phương pháp</th><th>Low</th><th>Mid</th><th>High &nbsp;({unit})</th></tr></thead>
+      <tbody>{ff_rows}</tbody>
+    </table>
+    <table class="ledger" style="margin-bottom:20px;">
+      <thead><tr><th>Kịch bản</th><th>Equity Value</th><th>Mô tả</th></tr></thead>
+      <tbody>{sc_rows}</tbody>
+    </table>
+    <div class="b-head" style="margin-top:4px;">
+      <div class="b-num" style="font-size:48px;">5Y</div>
+      <div class="b-htext">
+        <h2>Dự Phóng 5 Năm</h2>
+        <div class="en">5-Year Projection · {unit}</div>
+      </div>
+    </div>
+    {proj_bands}
+    <div class="pagefoot">
+      <span>ValuAI Admin Preview — Định giá &amp; Dự phóng</span>
+      <span>Trang 2</span>
+    </div>
+  </div>
+</div>"""
+
+    # ── TOOLBAR (admin browser view) ───────────────────────────────
+    toolbar = f"""
+<div class="toolbar">
+  <div class="tb-brand">ValuAI<b>Admin Preview</b></div>
+  <div class="tabs">
+    <button class="tab active" onclick="showSection('exec')">
+      Executive<small>Summary</small>
+    </button>
+    <button class="tab" onclick="showSection('val')">
+      Định giá<small>Valuation</small>
+    </button>
+  </div>
+  <div class="tb-group">
+    <span style="font-family:var(--sans);font-size:11px;opacity:.7;">{company_name} &nbsp;·&nbsp; {today}</span>
+  </div>
+</div>
+<div class="note">
+  <span>Admin</span> Preview nội bộ — Không phải báo cáo cuối cùng
+</div>"""
+
+    js = """<script>
+function showSection(id){
+  document.querySelectorAll('.pg-section').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('sec-'+id).classList.add('active');
+  event.currentTarget.classList.add('active');
+}
+window.addEventListener('DOMContentLoaded',()=>{
+  document.getElementById('sec-exec').classList.add('active');
+});
+</script>"""
+
+    return f"""<!DOCTYPE html>
 <html lang="vi">
 <head>
 <meta charset="UTF-8">
-<title>ValuAI — Admin Preview</title>
-{style}
+<title>ValuAI Admin — {company_name}</title>
+{_FONTS}
+{_CSS}
 </head>
 <body>
-{page1}
-{page2}
+{toolbar}
+<div id="stage">
+  <div id="sec-exec" class="pg-section">{page_exec}</div>
+  <div id="sec-val" class="pg-section">{page_val}</div>
+</div>
+{js}
 </body>
 </html>"""
-    return html
